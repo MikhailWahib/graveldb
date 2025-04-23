@@ -1,11 +1,13 @@
-package memtable
+package memtable_test
 
 import (
 	"testing"
+
+	skiplist "github.com/MikhailWahib/graveldb/storage/memtable"
 )
 
 func TestSkipListPutAndGet(t *testing.T) {
-	sl := NewSkipList()
+	sl := skiplist.NewSkipList()
 
 	sl.Put("apple", "red")
 	sl.Put("banana", "yellow")
@@ -17,7 +19,6 @@ func TestSkipListPutAndGet(t *testing.T) {
 
 	sl.Print()
 
-	// Test that values can be retrieved
 	tests := []struct {
 		key, expectedValue string
 		expectedFound      bool
@@ -39,7 +40,7 @@ func TestSkipListPutAndGet(t *testing.T) {
 }
 
 func TestSkipListUpdate(t *testing.T) {
-	sl := NewSkipList()
+	sl := skiplist.NewSkipList()
 
 	sl.Put("apple", "red")
 
@@ -52,16 +53,14 @@ func TestSkipListUpdate(t *testing.T) {
 }
 
 func TestSkipListDelete(t *testing.T) {
-	sl := NewSkipList()
+	sl := skiplist.NewSkipList()
 
 	sl.Put("apple", "red")
 	sl.Put("banana", "yellow")
 	sl.Put("cherry", "dark red")
 
-	// Delete "banana"
 	sl.Delete("banana")
 
-	// Test that "banana" is deleted
 	_, found := sl.Get("banana")
 	if found {
 		t.Errorf("Expected 'banana' to be deleted, but it was found")
@@ -77,13 +76,12 @@ func TestSkipListDelete(t *testing.T) {
 }
 
 func TestSkipListEdgeCases(t *testing.T) {
-	sl := NewSkipList()
+	sl := skiplist.NewSkipList()
 
 	// Test inserting and deleting the same key
 	sl.Put("apple", "red")
 	sl.Delete("apple")
 
-	// After deletion, "apple" should not be found
 	if _, found := sl.Get("apple"); found {
 		t.Errorf("Expected 'apple' to be deleted, but it was found")
 	}
@@ -99,7 +97,7 @@ func TestSkipListEdgeCases(t *testing.T) {
 }
 
 func TestSkipListEmpty(t *testing.T) {
-	sl := NewSkipList()
+	sl := skiplist.NewSkipList()
 
 	// Test that the list is empty
 	if _, found := sl.Get("apple"); found {
