@@ -22,22 +22,28 @@ type Entry struct {
 }
 
 type WAL interface {
+	// AppendPut appends a put operation to the WAL
 	AppendPut(key, value string) error
+	// AppendDelete appends a delete operation to the WAL
 	AppendDelete(key string) error
+	// Replay reads all WAL entries from the beginning of the file
 	Replay() ([]Entry, error)
+	// Sync ensures all data is persisted to disk
 	Sync() error
+	// Close closes the WAL file
 	Close() error
 }
 
 type wal struct {
 	dm          diskmanager.DiskManager
 	path        string
+	fileHandle  diskmanager.FileHandle
 	writeOffset int64
 }
 
 // NewWAL creates a new WAL that uses DiskManager for file operations
 func NewWAL(dm diskmanager.DiskManager, path string) (WAL, error) {
-	_, err := dm.Open(path, os.O_RDWR|os.O_CREATE, 0644)
+	fileHandle, err := dm.Open(path, os.O_RDWR|os.O_CREATE, 0644)
 	if err != nil {
 		return nil, err
 	}
@@ -51,6 +57,7 @@ func NewWAL(dm diskmanager.DiskManager, path string) (WAL, error) {
 	return &wal{
 		dm:          dm,
 		path:        path,
+		fileHandle:  fileHandle,
 		writeOffset: fileInfo.Size(),
 	}, nil
 }
@@ -71,7 +78,7 @@ func (w *wal) AppendDelete(key string) error {
 	})
 }
 
-// writeEntry formats an entry and writes it using the disk manager
+// writeEntry formats an entry and writes it using the file handle
 // Format: [1 byte Type][4 bytes KeyLen][4 bytes ValueLen][Key][Value]
 func (w *wal) writeEntry(e Entry) error {
 	keyBytes := []byte(e.Key)
@@ -89,7 +96,7 @@ func (w *wal) writeEntry(e Entry) error {
 	copy(buf[9+len(keyBytes):], valBytes)
 
 	// Write to file at current offset
-	n, err := w.dm.WriteAt(w.path, buf, w.writeOffset)
+	n, err := w.fileHandle.WriteAt(buf, w.writeOffset)
 	if err != nil {
 		return err
 	}
@@ -101,7 +108,6 @@ func (w *wal) writeEntry(e Entry) error {
 	return w.Sync()
 }
 
-// Replay reads all WAL entries from the beginning of the file
 func (w *wal) Replay() ([]Entry, error) {
 	var entries []Entry
 	var offset int64 = 0
@@ -109,7 +115,7 @@ func (w *wal) Replay() ([]Entry, error) {
 	for {
 		// Read entry type (1 byte)
 		tByte := make([]byte, 1)
-		n, err := w.dm.ReadAt(w.path, tByte, offset)
+		n, err := w.fileHandle.ReadAt(tByte, offset)
 		if err == io.EOF || n == 0 {
 			break // Reached end of file
 		} else if err != nil {
@@ -119,7 +125,7 @@ func (w *wal) Replay() ([]Entry, error) {
 
 		// Read key and value lengths (4 bytes each)
 		lenBuf := make([]byte, 8)
-		n, err = w.dm.ReadAt(w.path, lenBuf, offset)
+		n, err = w.fileHandle.ReadAt(lenBuf, offset)
 		if err != nil {
 			return nil, err
 		}
@@ -130,7 +136,7 @@ func (w *wal) Replay() ([]Entry, error) {
 
 		// Read the key
 		keyData := make([]byte, keyLen)
-		n, err = w.dm.ReadAt(w.path, keyData, offset)
+		n, err = w.fileHandle.ReadAt(keyData, offset)
 		if err != nil {
 			return nil, err
 		}
@@ -138,7 +144,7 @@ func (w *wal) Replay() ([]Entry, error) {
 
 		// Read the value
 		valueData := make([]byte, valLen)
-		n, err = w.dm.ReadAt(w.path, valueData, offset)
+		n, err = w.fileHandle.ReadAt(valueData, offset)
 		if err != nil {
 			return nil, err
 		}
@@ -155,12 +161,10 @@ func (w *wal) Replay() ([]Entry, error) {
 	return entries, nil
 }
 
-// Sync ensures all data is persisted to disk
 func (w *wal) Sync() error {
-	return w.dm.Sync(w.path)
+	return w.fileHandle.Sync()
 }
 
-// Close closes the WAL file
 func (w *wal) Close() error {
 	if err := w.Sync(); err != nil {
 		return err
