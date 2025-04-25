@@ -1,10 +1,11 @@
 package wal
 
 import (
-	"bufio"
 	"encoding/binary"
 	"io"
 	"os"
+
+	"github.com/MikhailWahib/graveldb/storage/diskmanager"
 )
 
 type EntryType byte
@@ -29,19 +30,28 @@ type WAL interface {
 }
 
 type wal struct {
-	file   *os.File
-	writer *bufio.Writer
+	dm          diskmanager.DiskManager
+	path        string
+	writeOffset int64
 }
 
-func NewWAL(path string) (WAL, error) {
-	file, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE|os.O_APPEND, 0644)
+// NewWAL creates a new WAL that uses DiskManager for file operations
+func NewWAL(dm diskmanager.DiskManager, path string) (WAL, error) {
+	_, err := dm.Open(path, os.O_RDWR|os.O_CREATE, 0644)
+	if err != nil {
+		return nil, err
+	}
+
+	// Get current file size to set initial write offset
+	fileInfo, err := os.Stat(path)
 	if err != nil {
 		return nil, err
 	}
 
 	return &wal{
-		file:   file,
-		writer: bufio.NewWriter(file),
+		dm:          dm,
+		path:        path,
+		writeOffset: fileInfo.Size(),
 	}, nil
 }
 
@@ -61,67 +71,83 @@ func (w *wal) AppendDelete(key string) error {
 	})
 }
 
+// writeEntry formats an entry and writes it using the disk manager
+// Format: [1 byte Type][4 bytes KeyLen][4 bytes ValueLen][Key][Value]
 func (w *wal) writeEntry(e Entry) error {
-	// Format:
-	// [1 byte Type][4 bytes KeyLen][4 bytes ValueLen][Key][Value]
 	keyBytes := []byte(e.Key)
 	valBytes := []byte(e.Value)
 
-	buf := make([]byte, 1+4+4+len(keyBytes)+len(valBytes))
-	buf[0] = byte(e.Type)
+	// Calculate total entry size
+	totalLen := 1 + 4 + 4 + len(keyBytes) + len(valBytes)
+	buf := make([]byte, totalLen)
 
+	// Format the entry
+	buf[0] = byte(e.Type)
 	binary.BigEndian.PutUint32(buf[1:5], uint32(len(keyBytes)))
 	binary.BigEndian.PutUint32(buf[5:9], uint32(len(valBytes)))
-
 	copy(buf[9:], keyBytes)
 	copy(buf[9+len(keyBytes):], valBytes)
 
-	_, err := w.writer.Write(buf)
-	return err
+	// Write to file at current offset
+	n, err := w.dm.WriteAt(w.path, buf, w.writeOffset)
+	if err != nil {
+		return err
+	}
+
+	// Update write offset
+	w.writeOffset += int64(n)
+
+	// Sync after each write for durability
+	return w.Sync()
 }
 
+// Replay reads all WAL entries from the beginning of the file
 func (w *wal) Replay() ([]Entry, error) {
-	// Rewind to beginning
-	if _, err := w.file.Seek(0, io.SeekStart); err != nil {
-		return nil, err
-	}
-	reader := bufio.NewReader(w.file)
-
 	var entries []Entry
+	var offset int64 = 0
+
 	for {
-		// Read entry type
-		t, err := reader.ReadByte()
-		if err == io.EOF {
-			break
+		// Read entry type (1 byte)
+		tByte := make([]byte, 1)
+		n, err := w.dm.ReadAt(w.path, tByte, offset)
+		if err == io.EOF || n == 0 {
+			break // Reached end of file
 		} else if err != nil {
 			return nil, err
 		}
+		offset += int64(n)
 
-		// Read lengths
-		keyLenBuf := make([]byte, 4)
-		valLenBuf := make([]byte, 4)
-		if _, err := io.ReadFull(reader, keyLenBuf); err != nil {
+		// Read key and value lengths (4 bytes each)
+		lenBuf := make([]byte, 8)
+		n, err = w.dm.ReadAt(w.path, lenBuf, offset)
+		if err != nil {
 			return nil, err
 		}
-		if _, err := io.ReadFull(reader, valLenBuf); err != nil {
-			return nil, err
-		}
-		keyLen := binary.BigEndian.Uint32(keyLenBuf)
-		valLen := binary.BigEndian.Uint32(valLenBuf)
+		offset += int64(n)
 
-		key := make([]byte, keyLen)
-		value := make([]byte, valLen)
-		if _, err := io.ReadFull(reader, key); err != nil {
+		keyLen := binary.BigEndian.Uint32(lenBuf[0:4])
+		valLen := binary.BigEndian.Uint32(lenBuf[4:8])
+
+		// Read the key
+		keyData := make([]byte, keyLen)
+		n, err = w.dm.ReadAt(w.path, keyData, offset)
+		if err != nil {
 			return nil, err
 		}
-		if _, err := io.ReadFull(reader, value); err != nil {
+		offset += int64(n)
+
+		// Read the value
+		valueData := make([]byte, valLen)
+		n, err = w.dm.ReadAt(w.path, valueData, offset)
+		if err != nil {
 			return nil, err
 		}
+		offset += int64(n)
 
 		entry := Entry{
-			Type:  EntryType(t),
-			Key:   string(key),
-			Value: string(value),
+			Type:  EntryType(tByte[0]),
+			Key:   string(keyData),
+			Value: string(valueData),
 		}
 		entries = append(entries, entry)
 	}
@@ -129,16 +155,15 @@ func (w *wal) Replay() ([]Entry, error) {
 	return entries, nil
 }
 
+// Sync ensures all data is persisted to disk
 func (w *wal) Sync() error {
-	if err := w.writer.Flush(); err != nil {
-		return err
-	}
-	return w.file.Sync()
+	return w.dm.Sync(w.path)
 }
 
+// Close closes the WAL file
 func (w *wal) Close() error {
 	if err := w.Sync(); err != nil {
 		return err
 	}
-	return w.file.Close()
+	return w.dm.Close(w.path)
 }
