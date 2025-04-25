@@ -69,7 +69,7 @@ func TestDiskManager_Open(t *testing.T) {
 	}
 }
 
-func TestDiskManager_WriteAt(t *testing.T) {
+func TestFileHandle_ReadWriteOperations(t *testing.T) {
 	dm := diskmanager.NewDiskManager()
 	filePath := "testfile2.txt"
 
@@ -81,13 +81,13 @@ func TestDiskManager_WriteAt(t *testing.T) {
 	}()
 
 	// Create file first with proper flags
-	_, err := dm.Open(filePath, os.O_CREATE|os.O_RDWR, 0644)
+	handle, err := dm.Open(filePath, os.O_CREATE|os.O_RDWR, 0644)
 	if err != nil {
 		t.Fatalf("Expected no error, got %v", err)
 	}
 
 	data := []byte("Hello, world!")
-	n, err := dm.WriteAt(filePath, data, 0)
+	n, err := handle.WriteAt(data, 0)
 	if err != nil {
 		t.Fatalf("Expected no error on WriteAt, got %v", err)
 	}
@@ -96,13 +96,13 @@ func TestDiskManager_WriteAt(t *testing.T) {
 	}
 
 	// Sync to ensure data is written to disk
-	err = dm.Sync(filePath)
+	err = handle.Sync()
 	if err != nil {
 		t.Fatalf("Expected no error on Sync, got %v", err)
 	}
 
 	readData := make([]byte, len(data))
-	n, err = dm.ReadAt(filePath, readData, 0)
+	n, err = handle.ReadAt(readData, 0)
 	if err != nil {
 		t.Fatalf("Expected no error on ReadAt, got %v", err)
 	}
@@ -116,7 +116,7 @@ func TestDiskManager_WriteAt(t *testing.T) {
 	// Test appending data
 	offset := int64(len(data))
 	newData := []byte("\nHiii!")
-	n, err = dm.WriteAt(filePath, newData, offset)
+	n, err = handle.WriteAt(newData, offset)
 	if err != nil {
 		t.Fatalf("Expected no error on WriteAt, got %v", err)
 	}
@@ -125,14 +125,14 @@ func TestDiskManager_WriteAt(t *testing.T) {
 	}
 
 	// Always sync after write
-	err = dm.Sync(filePath)
+	err = handle.Sync()
 	if err != nil {
 		t.Fatalf("Expected no error on Sync, got %v", err)
 	}
 
 	// Read combined data
 	readData = make([]byte, len(data)+len(newData))
-	n, err = dm.ReadAt(filePath, readData, 0)
+	n, err = handle.ReadAt(readData, 0)
 	if err != nil {
 		t.Fatalf("Expected no error on ReadAt, got %v", err)
 	}
@@ -144,11 +144,11 @@ func TestDiskManager_WriteAt(t *testing.T) {
 		t.Fatalf("Expected %s, got %s", expectedData, string(readData))
 	}
 
-	// Test write to non-existent file
+	// Test opening and writing to non-existent file
 	nonExistentPath := "nonexistent.txt"
-	_, err = dm.WriteAt(nonExistentPath, data, 0)
+	_, err = dm.Open(nonExistentPath, os.O_RDWR, 0644)
 	if err == nil {
-		t.Fatal("Expected error writing to non-existent file")
+		t.Fatal("Expected error opening non-existent file without create flag")
 		_ = dm.Close(nonExistentPath)
 		_ = os.Remove(nonExistentPath)
 	}
@@ -162,18 +162,18 @@ func TestDiskManager_Delete(t *testing.T) {
 	_ = os.Remove(filePath)
 
 	// Create file with proper flags
-	_, err := dm.Open(filePath, os.O_CREATE|os.O_RDWR, 0644)
+	handle, err := dm.Open(filePath, os.O_CREATE|os.O_RDWR, 0644)
 	if err != nil {
 		t.Fatalf("Expected no error on Open, got %v", err)
 	}
 
 	// Write some data to ensure the file exists
 	data := []byte("Test data")
-	_, err = dm.WriteAt(filePath, data, 0)
+	_, err = handle.WriteAt(data, 0)
 	if err != nil {
 		t.Fatalf("Expected no error on WriteAt, got %v", err)
 	}
-	err = dm.Sync(filePath)
+	err = handle.Sync()
 	if err != nil {
 		t.Fatalf("Expected no error on Sync, got %v", err)
 	}
@@ -205,7 +205,7 @@ func TestDiskManager_Delete(t *testing.T) {
 	}
 }
 
-func TestDiskManager_Sync(t *testing.T) {
+func TestFileHandle_Sync(t *testing.T) {
 	dm := diskmanager.NewDiskManager()
 	filePath := "testfile4.txt"
 
@@ -217,18 +217,18 @@ func TestDiskManager_Sync(t *testing.T) {
 	}()
 
 	// Create file with proper flags
-	_, err := dm.Open(filePath, os.O_CREATE|os.O_RDWR, 0644)
+	handle, err := dm.Open(filePath, os.O_CREATE|os.O_RDWR, 0644)
 	if err != nil {
 		t.Fatalf("Expected no error, got %v", err)
 	}
 
 	data := []byte("Data to sync")
-	_, err = dm.WriteAt(filePath, data, 0)
+	_, err = handle.WriteAt(data, 0)
 	if err != nil {
 		t.Fatalf("Expected no error on WriteAt, got %v", err)
 	}
 
-	err = dm.Sync(filePath)
+	err = handle.Sync()
 	if err != nil {
 		t.Fatalf("Expected no error on Sync, got %v", err)
 	}
@@ -239,13 +239,13 @@ func TestDiskManager_Sync(t *testing.T) {
 		t.Fatalf("Expected no error on Close, got %v", err)
 	}
 
-	_, err = dm.Open(filePath, os.O_RDONLY, 0644)
+	handle, err = dm.Open(filePath, os.O_RDONLY, 0644)
 	if err != nil {
 		t.Fatalf("Expected no error on reopening file, got %v", err)
 	}
 
 	readData := make([]byte, len(data))
-	n, err := dm.ReadAt(filePath, readData, 0)
+	n, err := handle.ReadAt(readData, 0)
 	if err != nil {
 		t.Fatalf("Expected no error on ReadAt after Sync, got %v", err)
 	}
@@ -254,12 +254,6 @@ func TestDiskManager_Sync(t *testing.T) {
 	}
 	if string(readData) != string(data) {
 		t.Fatalf("Expected %s after Sync, got %s", string(data), string(readData))
-	}
-
-	// Test syncing non-existent file
-	err = dm.Sync("nonexistent.txt")
-	if err == nil {
-		t.Fatal("Expected error when syncing non-existent file")
 	}
 }
 
@@ -283,13 +277,14 @@ func TestDiskManager_List(t *testing.T) {
 
 	for _, f := range testFiles {
 		path := filepath.Join(testDir, f)
-		_, err := dm.Open(path, os.O_CREATE|os.O_RDWR, 0644)
+		handle, err := dm.Open(path, os.O_CREATE|os.O_RDWR, 0644)
 		if err != nil {
 			t.Fatalf("Failed to create test file %s: %v", f, err)
 		}
 		defer func(p string) {
 			_ = dm.Close(p)
 		}(path)
+		_ = handle.Close() // Close handle after creating file
 	}
 
 	// Test listing all files
@@ -317,7 +312,7 @@ func TestDiskManager_List(t *testing.T) {
 	}
 }
 
-func TestDiskManager_EdgeCases(t *testing.T) {
+func TestFileHandle_EdgeCases(t *testing.T) {
 	dm := diskmanager.NewDiskManager()
 	filePath := "testfile5.txt"
 
@@ -329,13 +324,13 @@ func TestDiskManager_EdgeCases(t *testing.T) {
 	}()
 
 	// Create file with proper flags
-	_, err := dm.Open(filePath, os.O_CREATE|os.O_RDWR, 0644)
+	handle, err := dm.Open(filePath, os.O_CREATE|os.O_RDWR, 0644)
 	if err != nil {
 		t.Fatalf("Expected no error, got %v", err)
 	}
 
 	// Test writing empty data
-	n, err := dm.WriteAt(filePath, []byte{}, 0)
+	n, err := handle.WriteAt([]byte{}, 0)
 	if err != nil {
 		t.Fatalf("Expected no error writing empty data, got %v", err)
 	}
@@ -344,19 +339,19 @@ func TestDiskManager_EdgeCases(t *testing.T) {
 	}
 
 	data := []byte("Hello")
-	_, err = dm.WriteAt(filePath, data, 10) // Write at offset 10
+	_, err = handle.WriteAt(data, 10) // Write at offset 10
 	if err != nil {
 		t.Fatalf("Expected no error writing at offset, got %v", err)
 	}
 
-	err = dm.Sync(filePath)
+	err = handle.Sync()
 	if err != nil {
 		t.Fatalf("Expected no error on Sync, got %v", err)
 	}
 
 	// Test reading across sparse regions
 	fullData := make([]byte, 15) // 10 bytes of zeros + 5 bytes of "Hello"
-	_, err = dm.ReadAt(filePath, fullData, 0)
+	_, err = handle.ReadAt(fullData, 0)
 	if err != nil {
 		t.Fatalf("Expected no error reading full data, got %v", err)
 	}
@@ -375,7 +370,7 @@ func TestDiskManager_EdgeCases(t *testing.T) {
 
 	// Test reading beyond file size
 	beyondData := make([]byte, 5)
-	_, err = dm.ReadAt(filePath, beyondData, 20)
+	_, err = handle.ReadAt(beyondData, 20)
 	if err == nil {
 		t.Fatal("Expected error reading beyond file size")
 	}

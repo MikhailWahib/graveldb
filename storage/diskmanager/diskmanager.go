@@ -1,4 +1,3 @@
-// File: diskmanager/diskmanager.go
 package diskmanager
 
 import (
@@ -53,12 +52,6 @@ type DiskManager interface {
 	// List returns a slice of filenames in the specified directory
 	// that contain the filter string. Empty filter matches all files.
 	List(dir string, filter string) ([]string, error)
-	// ReadAt reads len(b) bytes from the file at path starting at offset off.
-	ReadAt(path string, b []byte, off int64) (int, error)
-	// WriteAt writes len(b) bytes to the file at path starting at offset off.
-	WriteAt(path string, b []byte, off int64) (int, error)
-	// Sync commits the current contents of the file at path to stable storage.
-	Sync(path string) error
 	// Close closes the file handle for the file at path if it exists.
 	Close(path string) error
 }
@@ -112,30 +105,6 @@ func (dm *diskManager) List(dir string, filter string) ([]string, error) {
 		}
 	}
 	return files, nil
-}
-
-func (dm *diskManager) ReadAt(path string, b []byte, off int64) (int, error) {
-	handle, err := dm.Open(path, os.O_RDONLY, 0644)
-	if err != nil {
-		return 0, err
-	}
-	return handle.ReadAt(b, off)
-}
-
-func (dm *diskManager) WriteAt(path string, b []byte, off int64) (int, error) {
-	handle, err := dm.Open(path, os.O_RDWR, 0644)
-	if err != nil {
-		return 0, err
-	}
-	return handle.WriteAt(b, off)
-}
-
-func (dm *diskManager) Sync(path string) error {
-	handle, err := dm.Open(path, os.O_RDWR, 0644)
-	if err != nil {
-		return err
-	}
-	return handle.Sync()
 }
 
 func (dm *diskManager) Close(path string) error {
