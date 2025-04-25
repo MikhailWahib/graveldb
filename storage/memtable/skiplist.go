@@ -24,6 +24,8 @@ type SkipList struct {
 	rng      *rand.Rand
 }
 
+// NewSkipListNode creates a new SkipListNode with the given key, value, and level.
+// It initializes the 'next' slice to the correct length for the node's level.
 func NewSkipListNode(key, value string, level int) *SkipListNode {
 	return &SkipListNode{
 		key:   key,
@@ -32,6 +34,8 @@ func NewSkipListNode(key, value string, level int) *SkipListNode {
 	}
 }
 
+// NewSkipList initializes and returns a new empty SkipList.
+// The list is seeded with a pseudo-random generator and a head node with maxLevel pointers.
 func NewSkipList() *SkipList {
 	return &SkipList{
 		head:     NewSkipListNode("", "", maxLevel),
@@ -42,6 +46,7 @@ func NewSkipList() *SkipList {
 	}
 }
 
+// randomLevel determines the level for a new node using a probabilistic model.
 func (sl *SkipList) randomLevel() int {
 	level := 1
 	for sl.rng.Float64() < probability && level < sl.maxLevel {
@@ -50,6 +55,8 @@ func (sl *SkipList) randomLevel() int {
 	return level
 }
 
+// Put inserts a new key-value pair into the SkipList or updates the value if the key already exists.
+// Internally, it finds the update path and adjusts pointers at each level as needed.
 func (sl *SkipList) Put(key, value string) {
 	// Create update array to store path
 	update := make([]*SkipListNode, sl.maxLevel)
@@ -92,6 +99,8 @@ func (sl *SkipList) Put(key, value string) {
 	sl.size++
 }
 
+// Get retrieves the value associated with a given key.
+// Returns the value and true if found, otherwise returns an empty string and false.
 func (sl *SkipList) Get(key string) (string, bool) {
 	current := sl.head
 
@@ -111,6 +120,8 @@ func (sl *SkipList) Get(key string) (string, bool) {
 	return "", false
 }
 
+// Delete removes the node with the given key from the SkipList, if it exists.
+// Returns true if the key was found and deleted, otherwise returns false.
 func (sl *SkipList) Delete(key string) bool {
 	update := make([]*SkipListNode, sl.maxLevel)
 	current := sl.head
@@ -147,6 +158,8 @@ func (sl *SkipList) Delete(key string) bool {
 	return true
 }
 
+// Range returns a slice of keys in the range [start, end] (inclusive).
+// Traverses the SkipList starting from 'start' and collects keys up to 'end'.
 func (sl *SkipList) Range(start, end string) []string {
 	var result []string
 	current := sl.head
@@ -170,25 +183,32 @@ func (sl *SkipList) Range(start, end string) []string {
 	return result
 }
 
+// Size returns the number of key-value pairs currently stored in the SkipList.
 func (sl *SkipList) Size() int {
 	return sl.size
 }
 
+// Clear resets the SkipList to an empty state, retaining only the head node.
 func (sl *SkipList) Clear() {
 	sl.head = NewSkipListNode("", "", sl.maxLevel)
 	sl.level = 1
 	sl.size = 0
 }
 
+// IsEmpty returns true if the SkipList contains no elements.
 func (sl *SkipList) IsEmpty() bool {
 	return sl.size == 0
 }
 
+// Contains checks whether a given key exists in the SkipList.
+// Returns true if the key is present, false otherwise.
 func (sl *SkipList) Contains(key string) bool {
 	_, found := sl.Get(key)
 	return found
 }
 
+// Print outputs the structure of the SkipList level by level.
+// Used primarily for debugging or visualization in development.
 func (sl *SkipList) Print() {
 	for i := sl.level - 1; i >= 0; i-- {
 		print("Level ", i, ": ")
