@@ -6,12 +6,21 @@ import (
 	"strings"
 )
 
-// FileHandle abstracts a file with support for random access and seeking.
+// FileHandle abstracts file operations with random access, syncing, and seeking.
 type FileHandle interface {
+	// ReadAt reads len(b) bytes from the file starting at byte offset off.
+	// It returns the number of bytes read and any error encountered.
 	ReadAt(b []byte, off int64) (int, error)
+	// WriteAt writes len(b) bytes to the file starting at byte offset off.
+	// It returns the number of bytes written and any error encountered.
 	WriteAt(b []byte, off int64) (int, error)
+	// Close closes the file handle, rendering it unusable for I/O.
 	Close() error
+	// Sync commits the current contents of the file to stable storage.
 	Sync() error
+	// Seek sets the offset for the next Read or Write on file to offset,
+	// interpreted according to whence: 0 means relative to origin,
+	// 1 means relative to current offset, and 2 means relative to end.
 	Seek(offset int64, whence int) (int64, error)
 }
 
@@ -19,6 +28,7 @@ type fileHandle struct {
 	file *os.File
 }
 
+// NewFileHandle wraps an *os.File into a FileHandle implementation.
 func NewFileHandle(file *os.File) FileHandle { return &fileHandle{file: file} }
 
 func (fh *fileHandle) ReadAt(b []byte, off int64) (int, error) { return fh.file.ReadAt(b, off) }
@@ -35,12 +45,21 @@ func (fh *fileHandle) Seek(offset int64, whence int) (int64, error) {
 
 // DiskManager defines methods for file operations.
 type DiskManager interface {
+	// Open opens a file with specified path, flags and permissions.
+	// If the file is already open, returns the existing handle.
 	Open(path string, flags int, perm os.FileMode) (FileHandle, error)
+	// Delete removes the named file and closes its handle if open.
 	Delete(path string) error
+	// List returns a slice of filenames in the specified directory
+	// that contain the filter string. Empty filter matches all files.
 	List(dir string, filter string) ([]string, error)
+	// ReadAt reads len(b) bytes from the file at path starting at offset off.
 	ReadAt(path string, b []byte, off int64) (int, error)
+	// WriteAt writes len(b) bytes to the file at path starting at offset off.
 	WriteAt(path string, b []byte, off int64) (int, error)
+	// Sync commits the current contents of the file at path to stable storage.
 	Sync(path string) error
+	// Close closes the file handle for the file at path if it exists.
 	Close(path string) error
 }
 
