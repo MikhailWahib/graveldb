@@ -5,8 +5,8 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/MikhailWahib/graveldb/storage/diskmanager"
-	"github.com/MikhailWahib/graveldb/storage/wal"
+	"github.com/MikhailWahib/graveldb/internal/diskmanager"
+	"github.com/MikhailWahib/graveldb/internal/wal"
 )
 
 func TestWAL_BasicOperations(t *testing.T) {

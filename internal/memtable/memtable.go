@@ -1,8 +1,8 @@
 package memtable
 
 import (
-	"github.com/MikhailWahib/graveldb/storage/diskmanager"
-	"github.com/MikhailWahib/graveldb/storage/wal"
+	"github.com/MikhailWahib/graveldb/internal/diskmanager"
+	"github.com/MikhailWahib/graveldb/internal/wal"
 )
 
 type Memtable interface {

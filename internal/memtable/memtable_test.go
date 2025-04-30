@@ -5,8 +5,8 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/MikhailWahib/graveldb/storage/diskmanager"
-	"github.com/MikhailWahib/graveldb/storage/memtable"
+	"github.com/MikhailWahib/graveldb/internal/diskmanager"
+	"github.com/MikhailWahib/graveldb/internal/memtable"
 )
 
 func setupTempDir(t *testing.T) string {

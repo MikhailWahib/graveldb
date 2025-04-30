@@ -5,7 +5,7 @@ import (
 	"io"
 	"os"
 
-	"github.com/MikhailWahib/graveldb/storage/diskmanager"
+	"github.com/MikhailWahib/graveldb/internal/diskmanager"
 )
 
 type EntryType byte

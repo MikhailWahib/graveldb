@@ -3,7 +3,7 @@ package memtable_test
 import (
 	"testing"
 
-	skiplist "github.com/MikhailWahib/graveldb/storage/memtable"
+	skiplist "github.com/MikhailWahib/graveldb/internal/memtable"
 )
 
 func TestSkipListPutAndGet(t *testing.T) {

@@ -5,7 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/MikhailWahib/graveldb/storage/diskmanager"
+	"github.com/MikhailWahib/graveldb/internal/diskmanager"
 )
 
 func TestDiskManager_Open(t *testing.T) {
