@@ -19,9 +19,9 @@ type Memtable interface {
 	Size() int
 }
 
-type memtable struct {
+type SkiplistMemtable struct {
 	sl  *SkipList
-	wal wal.WAL
+	wal *wal.WAL
 }
 
 // NewMemtable creates a new Memtable instance with a Write-Ahead Log (WAL).
@@ -31,7 +31,7 @@ func NewMemtable(dm diskmanager.DiskManager, walPath string) (Memtable, error) {
 		return nil, err
 	}
 
-	mt := &memtable{
+	mt := &SkiplistMemtable{
 		sl:  NewSkipList(),
 		wal: w,
 	}
@@ -54,7 +54,7 @@ func NewMemtable(dm diskmanager.DiskManager, walPath string) (Memtable, error) {
 	return mt, nil
 }
 
-func (m *memtable) Put(key, value string) error {
+func (m *SkiplistMemtable) Put(key, value string) error {
 	// Append the operation to the Write-Ahead Log (WAL)
 	err := m.wal.AppendPut(key, value)
 	if err != nil {
@@ -65,11 +65,11 @@ func (m *memtable) Put(key, value string) error {
 	return nil
 }
 
-func (m *memtable) Get(key string) (string, bool) {
+func (m *SkiplistMemtable) Get(key string) (string, bool) {
 	return m.sl.Get(key)
 }
 
-func (m *memtable) Delete(key string) error {
+func (m *SkiplistMemtable) Delete(key string) error {
 	// Append the delete operation to the Write-Ahead Log (WAL)
 	err := m.wal.AppendDelete(key)
 	if err != nil {
@@ -80,6 +80,6 @@ func (m *memtable) Delete(key string) error {
 	return nil
 }
 
-func (m *memtable) Size() int {
+func (m *SkiplistMemtable) Size() int {
 	return m.sl.Size()
 }

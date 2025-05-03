@@ -21,20 +21,7 @@ type Entry struct {
 	Value string
 }
 
-type WAL interface {
-	// AppendPut appends a put operation to the WAL
-	AppendPut(key, value string) error
-	// AppendDelete appends a delete operation to the WAL
-	AppendDelete(key string) error
-	// Replay reads all WAL entries from the beginning of the file
-	Replay() ([]Entry, error)
-	// Sync ensures all data is persisted to disk
-	Sync() error
-	// Close closes the WAL file
-	Close() error
-}
-
-type wal struct {
+type WAL struct {
 	dm          diskmanager.DiskManager
 	path        string
 	fileHandle  diskmanager.FileHandle
@@ -42,7 +29,7 @@ type wal struct {
 }
 
 // NewWAL creates a new WAL that uses DiskManager for file operations
-func NewWAL(dm diskmanager.DiskManager, path string) (WAL, error) {
+func NewWAL(dm diskmanager.DiskManager, path string) (*WAL, error) {
 	fileHandle, err := dm.Open(path, os.O_RDWR|os.O_CREATE, 0644)
 	if err != nil {
 		return nil, err
@@ -54,7 +41,7 @@ func NewWAL(dm diskmanager.DiskManager, path string) (WAL, error) {
 		return nil, err
 	}
 
-	return &wal{
+	return &WAL{
 		dm:          dm,
 		path:        path,
 		fileHandle:  fileHandle,
@@ -62,7 +49,8 @@ func NewWAL(dm diskmanager.DiskManager, path string) (WAL, error) {
 	}, nil
 }
 
-func (w *wal) AppendPut(key, value string) error {
+// AppendPut appends a put operation to the WAL
+func (w *WAL) AppendPut(key, value string) error {
 	return w.writeEntry(Entry{
 		Type:  PutEntry,
 		Key:   key,
@@ -70,7 +58,8 @@ func (w *wal) AppendPut(key, value string) error {
 	})
 }
 
-func (w *wal) AppendDelete(key string) error {
+// AppendDelete appends a delete operation to the WAL
+func (w *WAL) AppendDelete(key string) error {
 	return w.writeEntry(Entry{
 		Type:  DeleteEntry,
 		Key:   key,
@@ -80,7 +69,7 @@ func (w *wal) AppendDelete(key string) error {
 
 // writeEntry formats an entry and writes it using the file handle
 // Format: [1 byte Type][4 bytes KeyLen][4 bytes ValueLen][Key][Value]
-func (w *wal) writeEntry(e Entry) error {
+func (w *WAL) writeEntry(e Entry) error {
 	keyBytes := []byte(e.Key)
 	valBytes := []byte(e.Value)
 
@@ -108,7 +97,8 @@ func (w *wal) writeEntry(e Entry) error {
 	return w.Sync()
 }
 
-func (w *wal) Replay() ([]Entry, error) {
+// Replay reads all WAL entries from the beginning of the file
+func (w *WAL) Replay() ([]Entry, error) {
 	var entries []Entry
 	var offset int64 = 0
 
@@ -161,11 +151,13 @@ func (w *wal) Replay() ([]Entry, error) {
 	return entries, nil
 }
 
-func (w *wal) Sync() error {
+// Sync ensures all data is persisted to disk
+func (w *WAL) Sync() error {
 	return w.fileHandle.Sync()
 }
 
-func (w *wal) Close() error {
+// Close closes the WAL file
+func (w *WAL) Close() error {
 	if err := w.Sync(); err != nil {
 		return err
 	}
