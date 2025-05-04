@@ -1,11 +1,11 @@
 package wal
 
 import (
-	"encoding/binary"
 	"io"
 	"os"
 
 	"github.com/MikhailWahib/graveldb/internal/diskmanager"
+	"github.com/MikhailWahib/graveldb/internal/utils"
 )
 
 type EntryType byte
@@ -70,28 +70,21 @@ func (w *WAL) AppendDelete(key string) error {
 // writeEntry formats an entry and writes it using the file handle
 // Format: [1 byte Type][4 bytes KeyLen][4 bytes ValueLen][Key][Value]
 func (w *WAL) writeEntry(e Entry) error {
-	keyBytes := []byte(e.Key)
-	valBytes := []byte(e.Value)
-
-	// Calculate total entry size
-	totalLen := 1 + 4 + 4 + len(keyBytes) + len(valBytes)
-	buf := make([]byte, totalLen)
-
-	// Format the entry
-	buf[0] = byte(e.Type)
-	binary.BigEndian.PutUint32(buf[1:5], uint32(len(keyBytes)))
-	binary.BigEndian.PutUint32(buf[5:9], uint32(len(valBytes)))
-	copy(buf[9:], keyBytes)
-	copy(buf[9+len(keyBytes):], valBytes)
-
-	// Write to file at current offset
-	n, err := w.fileHandle.WriteAt(buf, w.writeOffset)
+	// Write the entry type byte first
+	_, err := w.fileHandle.WriteAt([]byte{byte(e.Type)}, w.writeOffset)
 	if err != nil {
 		return err
 	}
 
-	// Update write offset
-	w.writeOffset += int64(n)
+	// Write the entry type, key length, value length, key, and value.
+	// offset added by one because of the added byte above.
+	n, err := utils.WriteEntryWithPrefix(w.fileHandle, w.writeOffset+1, []byte(e.Key), []byte(e.Value))
+	if err != nil {
+		return err
+	}
+
+	// Update the write offset
+	w.writeOffset = n
 
 	// Sync after each write for durability
 	return w.Sync()
@@ -101,44 +94,25 @@ func (w *WAL) writeEntry(e Entry) error {
 func (w *WAL) Replay() ([]Entry, error) {
 	var entries []Entry
 	var offset int64 = 0
+	tByte := make([]byte, 1)
 
 	for {
 		// Read entry type (1 byte)
-		tByte := make([]byte, 1)
 		n, err := w.fileHandle.ReadAt(tByte, offset)
-		if err == io.EOF || n == 0 {
-			break // Reached end of file
-		} else if err != nil {
+		if err != nil {
+			if err == io.EOF || n == 0 {
+				break // Reached end of file
+			}
+
 			return nil, err
 		}
 		offset += int64(n)
 
-		// Read key and value lengths (4 bytes each)
-		lenBuf := make([]byte, 8)
-		n, err = w.fileHandle.ReadAt(lenBuf, offset)
+		keyData, valueData, newOffset, err := utils.ReadEntryWithPrefix(w.fileHandle, offset)
 		if err != nil {
 			return nil, err
 		}
-		offset += int64(n)
-
-		keyLen := binary.BigEndian.Uint32(lenBuf[0:4])
-		valLen := binary.BigEndian.Uint32(lenBuf[4:8])
-
-		// Read the key
-		keyData := make([]byte, keyLen)
-		n, err = w.fileHandle.ReadAt(keyData, offset)
-		if err != nil {
-			return nil, err
-		}
-		offset += int64(n)
-
-		// Read the value
-		valueData := make([]byte, valLen)
-		n, err = w.fileHandle.ReadAt(valueData, offset)
-		if err != nil {
-			return nil, err
-		}
-		offset += int64(n)
+		offset = newOffset
 
 		entry := Entry{
 			Type:  EntryType(tByte[0]),
