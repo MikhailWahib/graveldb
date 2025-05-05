@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/MikhailWahib/graveldb/internal/diskmanager"
+	"github.com/MikhailWahib/graveldb/internal/diskmanager/mockdm"
 	"github.com/MikhailWahib/graveldb/internal/utils"
 )
 
@@ -15,7 +15,7 @@ func TestWriteEntryWithPrefix(t *testing.T) {
 	dir := t.TempDir()
 	filePath := filepath.Join(dir, "test.db")
 
-	dm := diskmanager.NewDiskManager()
+	dm := mockdm.NewMockDiskManager()
 	fh, err := dm.Open(filePath, os.O_CREATE|os.O_RDWR, 0644)
 	if err != nil {
 		t.Fatalf("failed to open file: %v", err)
@@ -62,7 +62,7 @@ func TestReadEntryWithPrefix(t *testing.T) {
 	dir := t.TempDir()
 	filePath := filepath.Join(dir, "test.db")
 
-	dm := diskmanager.NewDiskManager()
+	dm := mockdm.NewMockDiskManager()
 	fh, err := dm.Open(filePath, os.O_CREATE|os.O_RDWR, 0644)
 	if err != nil {
 		t.Fatalf("failed to open file: %v", err)

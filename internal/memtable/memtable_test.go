@@ -5,7 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/MikhailWahib/graveldb/internal/diskmanager"
+	"github.com/MikhailWahib/graveldb/internal/diskmanager/mockdm"
 	"github.com/MikhailWahib/graveldb/internal/memtable"
 )
 
@@ -22,7 +22,7 @@ func TestMemtable_PutAndGet(t *testing.T) {
 	dir := setupTempDir(t)
 	defer os.RemoveAll(dir)
 
-	dm := diskmanager.NewDiskManager()
+	dm := mockdm.NewMockDiskManager()
 	mt, err := memtable.NewMemtable(dm, filepath.Join(dir, "wal.log"))
 	if err != nil {
 		t.Fatalf("failed to create memtable: %v", err)
@@ -43,7 +43,7 @@ func TestMemtable_Delete(t *testing.T) {
 	dir := setupTempDir(t)
 	defer os.RemoveAll(dir)
 
-	dm := diskmanager.NewDiskManager()
+	dm := mockdm.NewMockDiskManager()
 	mt, err := memtable.NewMemtable(dm, filepath.Join(dir, "wal.log"))
 	if err != nil {
 		t.Fatalf("failed to create memtable: %v", err)
@@ -69,7 +69,7 @@ func TestMemtable_Size(t *testing.T) {
 	dir := setupTempDir(t)
 	defer os.RemoveAll(dir)
 
-	dm := diskmanager.NewDiskManager()
+	dm := mockdm.NewMockDiskManager()
 	mt, err := memtable.NewMemtable(dm, filepath.Join(dir, "wal.log"))
 	if err != nil {
 		t.Fatalf("failed to create memtable: %v", err)
@@ -94,7 +94,7 @@ func TestMemtable_Replay(t *testing.T) {
 	defer os.RemoveAll(dir)
 
 	walPath := filepath.Join(dir, "wal.log")
-	dm := diskmanager.NewDiskManager()
+	dm := mockdm.NewMockDiskManager()
 
 	// Initial memtable and writes
 	mt1, err := memtable.NewMemtable(dm, walPath)
