@@ -4,6 +4,12 @@ BIN_DIR = ./bin/tests
 
 $(shell mkdir -p $(BIN_DIR))
 
+test-all:
+	go test ./...
+
+test-all-v:
+	go test ./... -v
+
 compile-tests:
 	@if [ -z "$(TEST)" ]; then \
 		echo "Compiling all tests..."; \
