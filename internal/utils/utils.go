@@ -63,3 +63,25 @@ func ReadEntryWithPrefix(f diskmanager.FileHandle, offset int64) (key, value []b
 	newOffset = offset + 8 + int64(keyLen) + int64(valLen)
 	return key, value, newOffset, nil
 }
+
+// CompareKeys compares bytes lexicographically
+func CompareKeys(a, b []byte) int {
+	min := len(a)
+	if len(b) < min {
+		min = len(b)
+	}
+	for i := range min {
+		if a[i] < b[i] {
+			return -1
+		} else if a[i] > b[i] {
+			return 1
+		}
+	}
+	if len(a) < len(b) {
+		return -1
+	}
+	if len(a) > len(b) {
+		return 1
+	}
+	return 0
+}
