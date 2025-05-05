@@ -17,10 +17,8 @@ type FileHandle interface {
 	Close() error
 	// Sync commits the current contents of the file to stable storage.
 	Sync() error
-	// Seek sets the offset for the next Read or Write on file to offset,
-	// interpreted according to whence: 0 means relative to origin,
-	// 1 means relative to current offset, and 2 means relative to end.
-	Seek(offset int64, whence int) (int64, error)
+	// Stat returns the file stat
+	Stat() (os.FileInfo, error)
 }
 
 type fileHandle struct {
@@ -38,9 +36,7 @@ func (fh *fileHandle) Close() error { return fh.file.Close() }
 
 func (fh *fileHandle) Sync() error { return fh.file.Sync() }
 
-func (fh *fileHandle) Seek(offset int64, whence int) (int64, error) {
-	return fh.file.Seek(offset, whence)
-}
+func (fh *fileHandle) Stat() (os.FileInfo, error) { return fh.file.Stat() }
 
 // DiskManager defines methods for file operations.
 type DiskManager interface {
