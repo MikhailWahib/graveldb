@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	skiplist "github.com/MikhailWahib/graveldb/internal/memtable"
+	"github.com/stretchr/testify/assert"
 )
 
 func TestSkipListPutAndGet(t *testing.T) {
@@ -16,8 +17,6 @@ func TestSkipListPutAndGet(t *testing.T) {
 	sl.Put("hello", "world")
 	sl.Put("123", "456")
 	sl.Put("abc", "def")
-
-	sl.Print()
 
 	tests := []struct {
 		key, expectedValue string
@@ -32,9 +31,8 @@ func TestSkipListPutAndGet(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.key, func(t *testing.T) {
 			actualValue, found := sl.Get(tt.key)
-			if found != tt.expectedFound || actualValue != tt.expectedValue {
-				t.Errorf("For key %v: expected (%v, %v), got (%v, %v)", tt.key, tt.expectedValue, tt.expectedFound, actualValue, found)
-			}
+			assert.Equal(t, tt.expectedFound, found, "unexpected found value for key %v", tt.key)
+			assert.Equal(t, tt.expectedValue, actualValue, "unexpected value for key %v", tt.key)
 		})
 	}
 }
@@ -43,13 +41,11 @@ func TestSkipListUpdate(t *testing.T) {
 	sl := skiplist.NewSkipList()
 
 	sl.Put("apple", "red")
-
 	sl.Put("apple", "green")
 
 	actualValue, found := sl.Get("apple")
-	if !found || actualValue != "green" {
-		t.Errorf("Expected 'green' for 'apple', got %v", actualValue)
-	}
+	assert.True(t, found, "expected apple to be found")
+	assert.Equal(t, "green", actualValue, "expected 'green' for 'apple'")
 }
 
 func TestSkipListDelete(t *testing.T) {
@@ -62,17 +58,16 @@ func TestSkipListDelete(t *testing.T) {
 	sl.Delete("banana")
 
 	_, found := sl.Get("banana")
-	if found {
-		t.Errorf("Expected 'banana' to be deleted, but it was found")
-	}
+	assert.False(t, found, "expected 'banana' to be deleted")
 
 	// Test that other keys are still there
-	if val, found := sl.Get("apple"); !found || val != "red" {
-		t.Errorf("Expected 'apple' to be 'red', got %v", val)
-	}
-	if val, found := sl.Get("cherry"); !found || val != "dark red" {
-		t.Errorf("Expected 'cherry' to be 'dark red', got %v", val)
-	}
+	val, found := sl.Get("apple")
+	assert.True(t, found, "expected 'apple' to be found")
+	assert.Equal(t, "red", val, "expected 'apple' to be 'red'")
+
+	val, found = sl.Get("cherry")
+	assert.True(t, found, "expected 'cherry' to be found")
+	assert.Equal(t, "dark red", val, "expected 'cherry' to be 'dark red'")
 }
 
 func TestSkipListEdgeCases(t *testing.T) {
@@ -82,31 +77,27 @@ func TestSkipListEdgeCases(t *testing.T) {
 	sl.Put("apple", "red")
 	sl.Delete("apple")
 
-	if _, found := sl.Get("apple"); found {
-		t.Errorf("Expected 'apple' to be deleted, but it was found")
-	}
+	_, found := sl.Get("apple")
+	assert.False(t, found, "expected 'apple' to be deleted")
 
 	// Test inserting after deletion
 	sl.Put("apple", "green")
 
 	// "apple" should now return the updated value
 	val, found := sl.Get("apple")
-	if !found || val != "green" {
-		t.Errorf("Expected 'green' for 'apple', got %v", val)
-	}
+	assert.True(t, found, "expected 'apple' to be found after re-insertion")
+	assert.Equal(t, "green", val, "expected 'green' for 'apple'")
 }
 
 func TestSkipListEmpty(t *testing.T) {
 	sl := skiplist.NewSkipList()
 
 	// Test that the list is empty
-	if _, found := sl.Get("apple"); found {
-		t.Errorf("Expected 'apple' to not be found in empty skip list")
-	}
+	_, found := sl.Get("apple")
+	assert.False(t, found, "expected 'apple' to not be found in empty skip list")
 
 	// Test deletion on empty skip list
 	sl.Delete("apple") // Should not cause issues
-	if _, found := sl.Get("apple"); found {
-		t.Errorf("Expected 'apple' to not be found after deletion")
-	}
+	_, found = sl.Get("apple")
+	assert.False(t, found, "expected 'apple' to not be found after deletion")
 }

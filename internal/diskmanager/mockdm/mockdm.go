@@ -1,6 +1,7 @@
 package mockdm
 
 import (
+	"io"
 	"os"
 	"strings"
 	"time"
@@ -26,9 +27,13 @@ func (m *MockFile) WriteAt(b []byte, off int64) (int, error) {
 
 func (m *MockFile) ReadAt(b []byte, off int64) (int, error) {
 	if off >= int64(len(m.data)) {
-		return 0, os.ErrInvalid
+		return 0, io.EOF
 	}
-	return copy(b, m.data[off:]), nil
+	n := copy(b, m.data[off:])
+	if n < len(b) {
+		return n, io.EOF
+	}
+	return n, nil
 }
 
 func (m *MockFile) Close() error {
@@ -95,6 +100,5 @@ func (dm *MockDiskManager) List(dir string, filter string) ([]string, error) {
 }
 
 func (dm *MockDiskManager) Close(path string) error {
-	delete(dm.files, path)
 	return nil
 }

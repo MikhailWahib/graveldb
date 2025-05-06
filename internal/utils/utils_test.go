@@ -1,7 +1,6 @@
 package utils_test
 
 import (
-	"bytes"
 	"encoding/binary"
 	"os"
 	"path/filepath"
@@ -9,6 +8,8 @@ import (
 
 	"github.com/MikhailWahib/graveldb/internal/diskmanager/mockdm"
 	"github.com/MikhailWahib/graveldb/internal/utils"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestWriteEntryWithPrefix(t *testing.T) {
@@ -17,9 +18,7 @@ func TestWriteEntryWithPrefix(t *testing.T) {
 
 	dm := mockdm.NewMockDiskManager()
 	fh, err := dm.Open(filePath, os.O_CREATE|os.O_RDWR, 0644)
-	if err != nil {
-		t.Fatalf("failed to open file: %v", err)
-	}
+	require.NoError(t, err)
 	defer func() {
 		_ = dm.Close(filePath)
 		_ = dm.Delete(filePath)
@@ -29,33 +28,26 @@ func TestWriteEntryWithPrefix(t *testing.T) {
 	value := []byte("myvalue")
 	offset := int64(0)
 
+	// Write entry with prefix
 	newOffset, err := utils.WriteEntryWithPrefix(fh, offset, key, value)
-	if err != nil {
-		t.Fatalf("WriteEntryWithPrefix failed: %v", err)
-	}
+	require.NoError(t, err)
 
 	expectedLen := 4 + 4 + len(key) + len(value)
-	if newOffset != offset+int64(expectedLen) {
-		t.Errorf("unexpected new offset: got %d, want %d", newOffset, offset+int64(expectedLen))
-	}
+	expectedOffset := offset + int64(expectedLen)
+	assert.Equal(t, expectedOffset, newOffset, "unexpected new offset")
 
 	// Read back the data
 	buf := make([]byte, expectedLen)
 	_, err = fh.ReadAt(buf, offset)
-	if err != nil {
-		t.Fatalf("failed to read written data: %v", err)
-	}
+	require.NoError(t, err)
 
 	keyLen := binary.BigEndian.Uint32(buf[:4])
 	readKey := buf[8 : 8+keyLen]
 	readValue := buf[8+keyLen:]
 
-	if !bytes.Equal(readKey, key) {
-		t.Errorf("key mismatch: got %s, want %s", readKey, key)
-	}
-	if !bytes.Equal(readValue, value) {
-		t.Errorf("value mismatch: got %s, want %s", readValue, value)
-	}
+	// Validate key and value
+	assert.Equal(t, key, readKey, "key mismatch")
+	assert.Equal(t, value, readValue, "value mismatch")
 }
 
 func TestReadEntryWithPrefix(t *testing.T) {
@@ -64,9 +56,7 @@ func TestReadEntryWithPrefix(t *testing.T) {
 
 	dm := mockdm.NewMockDiskManager()
 	fh, err := dm.Open(filePath, os.O_CREATE|os.O_RDWR, 0644)
-	if err != nil {
-		t.Fatalf("failed to open file: %v", err)
-	}
+	require.NoError(t, err)
 	defer func() {
 		_ = dm.Close(filePath)
 		_ = dm.Delete(filePath)
@@ -76,27 +66,19 @@ func TestReadEntryWithPrefix(t *testing.T) {
 	value := []byte("myvalue")
 	offset := int64(0)
 
-	// Write an entry to the file
+	// Write entry with prefix
 	_, err = utils.WriteEntryWithPrefix(fh, offset, key, value)
-	if err != nil {
-		t.Fatalf("WriteEntryWithPrefix failed: %v", err)
-	}
+	require.NoError(t, err)
 
-	// Now, read the entry back
+	// Read the entry back
 	readKey, readValue, newOffset, err := utils.ReadEntryWithPrefix(fh, offset)
-	if err != nil {
-		t.Fatalf("ReadEntryWithPrefix failed: %v", err)
-	}
+	require.NoError(t, err)
 
-	if !bytes.Equal(readKey, key) {
-		t.Errorf("key mismatch: got %s, want %s", readKey, key)
-	}
-	if !bytes.Equal(readValue, value) {
-		t.Errorf("value mismatch: got %s, want %s", readValue, value)
-	}
+	// Validate key and value
+	assert.Equal(t, key, readKey, "key mismatch")
+	assert.Equal(t, value, readValue, "value mismatch")
 
 	expectedLen := 4 + 4 + len(key) + len(value)
-	if newOffset != offset+int64(expectedLen) {
-		t.Errorf("unexpected new offset: got %d, want %d", newOffset, offset+int64(expectedLen))
-	}
+	expectedOffset := offset + int64(expectedLen)
+	assert.Equal(t, expectedOffset, newOffset, "unexpected new offset")
 }

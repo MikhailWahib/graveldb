@@ -1,73 +1,46 @@
 package wal_test
 
 import (
-	"os"
 	"path/filepath"
 	"testing"
 
 	"github.com/MikhailWahib/graveldb/internal/diskmanager"
 	"github.com/MikhailWahib/graveldb/internal/wal"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
-func TestWAL_BasicOperations(t *testing.T) {
-	// Setup
+func setup(t *testing.T, path string) (string, diskmanager.DiskManager) {
 	testDir := t.TempDir()
-	walPath := filepath.Join(testDir, "test.wal")
+	walPath := filepath.Join(testDir, path)
 	dm := diskmanager.NewDiskManager()
+	return walPath, dm
 
-	// Create new WAL
+}
+
+func TestWAL_BasicOperations(t *testing.T) {
+	walPath, dm := setup(t, "basic.wal")
+
 	w, err := wal.NewWAL(dm, walPath)
-	if err != nil {
-		t.Fatalf("Failed to create WAL: %v", err)
-	}
+	require.NoError(t, err)
 
-	// Test AppendPut
-	err = w.AppendPut("key1", "value1")
-	if err != nil {
-		t.Fatalf("AppendPut failed: %v", err)
-	}
+	require.NoError(t, w.AppendPut("key1", "value1"))
+	require.NoError(t, w.AppendPut("key2", "value2"))
 
-	err = w.AppendPut("key2", "value2")
-	if err != nil {
-		t.Fatalf("AppendPut failed: %v", err)
-	}
+	require.NoError(t, w.AppendDelete("key3"))
 
-	// Test AppendDelete
-	err = w.AppendDelete("key3")
-	if err != nil {
-		t.Fatalf("AppendDelete failed: %v", err)
-	}
+	require.NoError(t, w.Sync())
 
-	// Test Sync
-	err = w.Sync()
-	if err != nil {
-		t.Fatalf("Sync failed: %v", err)
-	}
+	require.NoError(t, w.Close())
 
-	// Test Close
-	err = w.Close()
-	if err != nil {
-		t.Fatalf("Close failed: %v", err)
-	}
-
-	// Verify file exists
-	_, err = os.Stat(walPath)
-	if err != nil {
-		t.Fatalf("WAL file does not exist after operations: %v", err)
-	}
+	assert.FileExists(t, walPath)
 }
 
 func TestWAL_Replay(t *testing.T) {
-	// Setup
-	testDir := t.TempDir()
-	walPath := filepath.Join(testDir, "replay.wal")
-	dm := diskmanager.NewDiskManager()
+	walPath, dm := setup(t, "replay.wal")
 
-	// Create and populate WAL
 	w, err := wal.NewWAL(dm, walPath)
-	if err != nil {
-		t.Fatalf("Failed to create WAL: %v", err)
-	}
+	require.NoError(t, err)
 
 	expected := []struct {
 		op    string
@@ -82,243 +55,124 @@ func TestWAL_Replay(t *testing.T) {
 
 	for _, e := range expected {
 		if e.op == "put" {
-			err = w.AppendPut(e.key, e.value)
+			require.NoError(t, w.AppendPut(e.key, e.value))
 		} else {
-			err = w.AppendDelete(e.key)
-		}
-		if err != nil {
-			t.Fatalf("Failed to append entry: %v", err)
+			require.NoError(t, w.AppendDelete(e.key))
 		}
 	}
 
 	// Sync and close
-	err = w.Sync()
-	if err != nil {
-		t.Fatalf("Sync failed: %v", err)
-	}
-
-	err = w.Close()
-	if err != nil {
-		t.Fatalf("Close failed: %v", err)
-	}
+	require.NoError(t, w.Sync())
+	require.NoError(t, w.Close())
 
 	// Reopen WAL for replay
 	w, err = wal.NewWAL(dm, walPath)
-	if err != nil {
-		t.Fatalf("Failed to reopen WAL: %v", err)
-	}
+	require.NoError(t, err)
 
 	// Replay and verify entries
 	entries, err := w.Replay()
-	if err != nil {
-		t.Fatalf("Replay failed: %v", err)
-	}
+	require.NoError(t, err)
 
-	if len(entries) != len(expected) {
-		t.Fatalf("Expected %d entries, got %d", len(expected), len(entries))
-	}
+	assert.Len(t, entries, len(expected))
 
 	for i, entry := range entries {
 		e := expected[i]
-
-		var expectedType wal.EntryType
-		if e.op == "put" {
-			expectedType = wal.PutEntry
-		} else {
+		expectedType := wal.PutEntry
+		if e.op == "delete" {
 			expectedType = wal.DeleteEntry
 		}
 
-		if entry.Type != expectedType {
-			t.Errorf("Entry %d: expected type %v, got %v", i, expectedType, entry.Type)
-		}
-
-		if entry.Key != e.key {
-			t.Errorf("Entry %d: expected key %q, got %q", i, e.key, entry.Key)
-		}
-
-		if entry.Value != e.value {
-			t.Errorf("Entry %d: expected value %q, got %q", i, e.value, entry.Value)
-		}
+		assert.Equal(t, expectedType, entry.Type, "Entry type mismatch")
+		assert.Equal(t, e.key, entry.Key, "Key mismatch")
+		assert.Equal(t, e.value, entry.Value, "Value mismatch")
 	}
 
-	err = w.Close()
-	if err != nil {
-		t.Fatalf("Close after replay failed: %v", err)
-	}
+	require.NoError(t, w.Close())
 }
 
 func TestWAL_EmptyReplay(t *testing.T) {
-	// Setup
-	testDir := t.TempDir()
-	walPath := filepath.Join(testDir, "empty.wal")
-	dm := diskmanager.NewDiskManager()
+	walPath, dm := setup(t, "empty.wal")
 
 	// Create empty WAL
 	w, err := wal.NewWAL(dm, walPath)
-	if err != nil {
-		t.Fatalf("Failed to create WAL: %v", err)
-	}
+	require.NoError(t, err)
 
 	// Replay empty WAL
 	entries, err := w.Replay()
-	if err != nil {
-		t.Fatalf("Replay failed: %v", err)
-	}
+	require.NoError(t, err)
 
-	if len(entries) != 0 {
-		t.Fatalf("Expected empty replay, got %d entries", len(entries))
-	}
-
-	err = w.Close()
-	if err != nil {
-		t.Fatalf("Close failed: %v", err)
-	}
+	assert.Len(t, entries, 0, "Expected empty replay, got entries")
+	require.NoError(t, w.Close())
 }
 
 func TestWAL_LargeEntries(t *testing.T) {
-	// Setup
-	testDir := t.TempDir()
-	walPath := filepath.Join(testDir, "large.wal")
-	dm := diskmanager.NewDiskManager()
+	walPath, dm := setup(t, "large.wal")
 
-	// Create WAL
 	w, err := wal.NewWAL(dm, walPath)
-	if err != nil {
-		t.Fatalf("Failed to create WAL: %v", err)
-	}
+	require.NoError(t, err)
 
 	// Generate large key and value
 	largeKey := make([]byte, 1024)
-	for i := range largeKey {
-		largeKey[i] = byte(i % 256)
-	}
-
 	largeValue := make([]byte, 4096)
-	for i := range largeValue {
-		largeValue[i] = byte((i * 7) % 256)
-	}
 
 	// Write large entry
-	err = w.AppendPut(string(largeKey), string(largeValue))
-	if err != nil {
-		t.Fatalf("Failed to append large entry: %v", err)
-	}
-
+	require.NoError(t, w.AppendPut(string(largeKey), string(largeValue)))
 	// Write normal entry
-	err = w.AppendPut("small_key", "small_value")
-	if err != nil {
-		t.Fatalf("Failed to append small entry: %v", err)
-	}
+	require.NoError(t, w.AppendPut("small_key", "small_value"))
 
-	err = w.Close()
-	if err != nil {
-		t.Fatalf("Close failed: %v", err)
-	}
+	require.NoError(t, w.Close())
 
 	// Reopen and replay
 	w, err = wal.NewWAL(dm, walPath)
-	if err != nil {
-		t.Fatalf("Failed to reopen WAL: %v", err)
-	}
+	require.NoError(t, err)
 
 	entries, err := w.Replay()
-	if err != nil {
-		t.Fatalf("Replay failed: %v", err)
-	}
+	require.NoError(t, err)
 
-	if len(entries) != 2 {
-		t.Fatalf("Expected 2 entries, got %d", len(entries))
-	}
+	assert.Len(t, entries, 2)
 
 	// Verify large entry
-	if entries[0].Key != string(largeKey) {
-		t.Errorf("Large key mismatch")
-	}
-
-	if entries[0].Value != string(largeValue) {
-		t.Errorf("Large value mismatch")
-	}
+	assert.Equal(t, string(largeKey), entries[0].Key, "Large key mismatch")
+	assert.Equal(t, string(largeValue), entries[0].Value, "Large value mismatch")
 
 	// Verify small entry
-	if entries[1].Key != "small_key" {
-		t.Errorf("Small key mismatch: expected 'small_key', got %q", entries[1].Key)
-	}
+	assert.Equal(t, "small_key", entries[1].Key, "Small key mismatch")
+	assert.Equal(t, "small_value", entries[1].Value, "Small value mismatch")
 
-	if entries[1].Value != "small_value" {
-		t.Errorf("Small value mismatch: expected 'small_value', got %q", entries[1].Value)
-	}
-
-	err = w.Close()
-	if err != nil {
-		t.Fatalf("Close failed: %v", err)
-	}
+	require.NoError(t, w.Close())
 }
 
 func TestWAL_Reopening(t *testing.T) {
-	// Setup
-	testDir := t.TempDir()
-	walPath := filepath.Join(testDir, "reopen.wal")
-	dm := diskmanager.NewDiskManager()
+	walPath, dm := setup(t, "reopen.wal")
 
 	// Create WAL and add entries
 	w, err := wal.NewWAL(dm, walPath)
-	if err != nil {
-		t.Fatalf("Failed to create WAL: %v", err)
-	}
+	require.NoError(t, err)
 
-	err = w.AppendPut("key1", "value1")
-	if err != nil {
-		t.Fatalf("AppendPut failed: %v", err)
-	}
-
-	err = w.Close()
-	if err != nil {
-		t.Fatalf("Close failed: %v", err)
-	}
+	require.NoError(t, w.AppendPut("key1", "value1"))
+	require.NoError(t, w.Close())
 
 	// Reopen and add more entries
 	w, err = wal.NewWAL(dm, walPath)
-	if err != nil {
-		t.Fatalf("Failed to reopen WAL: %v", err)
-	}
+	require.NoError(t, err)
 
-	err = w.AppendPut("key2", "value2")
-	if err != nil {
-		t.Fatalf("AppendPut failed: %v", err)
-	}
-
-	err = w.Close()
-	if err != nil {
-		t.Fatalf("Close failed: %v", err)
-	}
+	require.NoError(t, w.AppendPut("key2", "value2"))
+	require.NoError(t, w.Close())
 
 	// Open and replay
 	w, err = wal.NewWAL(dm, walPath)
-	if err != nil {
-		t.Fatalf("Failed to reopen WAL: %v", err)
-	}
+	require.NoError(t, err)
 
 	entries, err := w.Replay()
-	if err != nil {
-		t.Fatalf("Replay failed: %v", err)
-	}
+	require.NoError(t, err)
 
-	if len(entries) != 2 {
-		t.Fatalf("Expected 2 entries, got %d", len(entries))
-	}
+	assert.Len(t, entries, 2)
+	assert.Equal(t, "key1", entries[0].Key)
+	assert.Equal(t, "value1", entries[0].Value)
+	assert.Equal(t, "key2", entries[1].Key)
+	assert.Equal(t, "value2", entries[1].Value)
 
-	if entries[0].Key != "key1" || entries[0].Value != "value1" {
-		t.Errorf("First entry mismatch: expected key1/value1, got %s/%s", entries[0].Key, entries[0].Value)
-	}
-
-	if entries[1].Key != "key2" || entries[1].Value != "value2" {
-		t.Errorf("Second entry mismatch: expected key2/value2, got %s/%s", entries[1].Key, entries[1].Value)
-	}
-
-	err = w.Close()
-	if err != nil {
-		t.Fatalf("Close failed: %v", err)
-	}
+	require.NoError(t, w.Close())
 }
 
 func TestWAL_InvalidPath(t *testing.T) {
@@ -326,7 +180,5 @@ func TestWAL_InvalidPath(t *testing.T) {
 
 	// Try to create WAL in non-existent directory
 	_, err := wal.NewWAL(dm, "/nonexistent/directory/test.wal")
-	if err == nil {
-		t.Fatalf("Expected error with invalid path, got nil")
-	}
+	assert.Error(t, err, "Expected error with invalid path, got nil")
 }

@@ -5,16 +5,17 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/MikhailWahib/graveldb/internal/diskmanager"
 	"github.com/MikhailWahib/graveldb/internal/diskmanager/mockdm"
 	"github.com/MikhailWahib/graveldb/internal/memtable"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func setupTempDir(t *testing.T) string {
 	t.Helper()
 	dir, err := os.MkdirTemp("", "memtable-test-*")
-	if err != nil {
-		t.Fatalf("failed to create temp dir: %v", err)
-	}
+	require.NoError(t, err, "failed to create temp dir")
 	return dir
 }
 
@@ -24,19 +25,14 @@ func TestMemtable_PutAndGet(t *testing.T) {
 
 	dm := mockdm.NewMockDiskManager()
 	mt, err := memtable.NewMemtable(dm, filepath.Join(dir, "wal.log"))
-	if err != nil {
-		t.Fatalf("failed to create memtable: %v", err)
-	}
+	require.NoError(t, err, "failed to create memtable")
 
 	err = mt.Put("key1", "value1")
-	if err != nil {
-		t.Fatalf("Put failed: %v", err)
-	}
+	require.NoError(t, err, "Put failed")
 
 	val, ok := mt.Get("key1")
-	if !ok || val != "value1" {
-		t.Errorf("expected value1, got %q", val)
-	}
+	assert.True(t, ok, "expected key1 to exist")
+	assert.Equal(t, "value1", val, "expected value1, got different value")
 }
 
 func TestMemtable_Delete(t *testing.T) {
@@ -45,24 +41,16 @@ func TestMemtable_Delete(t *testing.T) {
 
 	dm := mockdm.NewMockDiskManager()
 	mt, err := memtable.NewMemtable(dm, filepath.Join(dir, "wal.log"))
-	if err != nil {
-		t.Fatalf("failed to create memtable: %v", err)
-	}
+	require.NoError(t, err, "failed to create memtable")
 
 	err = mt.Put("key1", "value1")
-	if err != nil {
-		t.Fatalf("Put failed: %v", err)
-	}
+	require.NoError(t, err, "Put failed")
 
 	err = mt.Delete("key1")
-	if err != nil {
-		t.Fatalf("Delete failed: %v", err)
-	}
+	require.NoError(t, err, "Delete failed")
 
 	_, ok := mt.Get("key1")
-	if ok {
-		t.Errorf("expected key1 to be deleted")
-	}
+	assert.False(t, ok, "expected key1 to be deleted")
 }
 
 func TestMemtable_Size(t *testing.T) {
@@ -71,22 +59,16 @@ func TestMemtable_Size(t *testing.T) {
 
 	dm := mockdm.NewMockDiskManager()
 	mt, err := memtable.NewMemtable(dm, filepath.Join(dir, "wal.log"))
-	if err != nil {
-		t.Fatalf("failed to create memtable: %v", err)
-	}
+	require.NoError(t, err, "failed to create memtable")
 
 	mt.Put("a", "1")
 	mt.Put("b", "2")
 	mt.Put("c", "3")
 
-	if got := mt.Size(); got != 3 {
-		t.Errorf("expected size 3, got %d", got)
-	}
+	assert.Equal(t, 3, mt.Size(), "expected size 3")
 
 	mt.Delete("b")
-	if got := mt.Size(); got != 2 {
-		t.Errorf("expected size 2 after delete, got %d", got)
-	}
+	assert.Equal(t, 2, mt.Size(), "expected size 2 after delete")
 }
 
 func TestMemtable_Replay(t *testing.T) {
@@ -94,29 +76,23 @@ func TestMemtable_Replay(t *testing.T) {
 	defer os.RemoveAll(dir)
 
 	walPath := filepath.Join(dir, "wal.log")
-	dm := mockdm.NewMockDiskManager()
+	dm := diskmanager.NewDiskManager()
 
 	// Initial memtable and writes
 	mt1, err := memtable.NewMemtable(dm, walPath)
-	if err != nil {
-		t.Fatalf("failed to create memtable: %v", err)
-	}
+	require.NoError(t, err, "failed to create memtable")
 	mt1.Put("alpha", "1")
 	mt1.Put("beta", "2")
 	mt1.Delete("beta")
 
 	// Simulate restart by reloading WAL
 	mt2, err := memtable.NewMemtable(dm, walPath)
-	if err != nil {
-		t.Fatalf("failed to reopen memtable: %v", err)
-	}
+	require.NoError(t, err, "failed to reopen memtable")
 
 	val, ok := mt2.Get("alpha")
-	if !ok || val != "1" {
-		t.Errorf("expected alpha=1, got %q", val)
-	}
+	assert.True(t, ok, "expected alpha to exist after replay")
+	assert.Equal(t, "1", val, "expected alpha=1, got different value")
 
-	if _, ok := mt2.Get("beta"); ok {
-		t.Errorf("expected beta to be deleted after replay")
-	}
+	_, ok = mt2.Get("beta")
+	assert.False(t, ok, "expected beta to be deleted after replay")
 }
