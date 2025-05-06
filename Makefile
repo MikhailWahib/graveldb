@@ -19,19 +19,15 @@ compile-tests:
 		go test -gcflags="all=-N -l" -c $(TEST) -o $(BIN_DIR)/$(notdir $(TEST)).test; \
 	fi
 
-compile-specific-test:
-	@echo "Compiling specific test $(TEST)..."
-	@go test -gcflags="all=-N -l" -c $(TEST) -o $(BIN_DIR)/$(notdir $(TEST)).test
-
 debug-test:
-	@echo "Running GDB on the test binary..."
+	@echo "Running Delve on the test binary..."
 	@if [ -z "$(TEST)" ]; then \
 		echo "No specific test file provided, compiling all tests."; \
 		$(MAKE) compile-tests; \
-		gdb $(BIN_DIR)/my_test.test; \
+		dlv exec $(BIN_DIR)/my_test.test; \
 	else \
 		$(MAKE) compile-specific-test; \
-		gdb $(BIN_DIR)/$(notdir $(TEST)).test; \
+		dlv exec $(BIN_DIR)/$(notdir $(TEST)).test; \
 	fi
 
 clean:
