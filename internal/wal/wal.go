@@ -70,15 +70,15 @@ func (w *WAL) AppendDelete(key string) error {
 // writeEntry formats an entry and writes it using the file handle
 // Format: [1 byte Type][4 bytes KeyLen][4 bytes ValueLen][Key][Value]
 func (w *WAL) writeEntry(e Entry) error {
-	// Write the entry type byte first
-	_, err := w.file.WriteAt([]byte{byte(e.Type)}, w.writeOffset)
-	if err != nil {
-		return err
-	}
-
 	// Write the entry type, key length, value length, key, and value.
 	// offset added by one because of the added byte above.
-	n, err := utils.WriteEntryWithPrefix(w.file, w.writeOffset+1, []byte(e.Key), []byte(e.Value))
+	n, err := utils.WriteEntryWithPrefix(utils.WriteEntry{
+		F:         w.file,
+		Offset:    w.writeOffset,
+		EntryType: []byte{byte(e.Type)},
+		Key:       []byte(e.Key),
+		Value:     []byte(e.Value),
+	})
 	if err != nil {
 		return err
 	}
@@ -94,30 +94,22 @@ func (w *WAL) writeEntry(e Entry) error {
 func (w *WAL) Replay() ([]Entry, error) {
 	var entries []Entry
 	var offset int64 = 0
-	tByte := make([]byte, 1)
 
 	for {
-		// Read entry type (1 byte)
-		n, err := w.file.ReadAt(tByte, offset)
-		if err != nil {
-			if err == io.EOF || n == 0 {
-				break // Reached end of file
+		e := utils.ReadEntryWithPrefix(w.file, offset)
+		if e.Err != nil {
+			if e.Err == io.EOF || e.NewOffset == 0 {
+				break
 			}
 
-			return nil, err
+			return nil, e.Err
 		}
-		offset += int64(n)
-
-		keyData, valueData, newOffset, err := utils.ReadEntryWithPrefix(w.file, offset)
-		if err != nil {
-			return nil, err
-		}
-		offset = newOffset
+		offset = e.NewOffset
 
 		entry := Entry{
-			Type:  EntryType(tByte[0]),
-			Key:   string(keyData),
-			Value: string(valueData),
+			Type:  EntryType(e.Type),
+			Key:   string(e.Key),
+			Value: string(e.Value),
 		}
 		entries = append(entries, entry)
 	}

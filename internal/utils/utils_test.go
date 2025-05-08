@@ -29,10 +29,16 @@ func TestWriteEntryWithPrefix(t *testing.T) {
 	offset := int64(0)
 
 	// Write entry with prefix
-	newOffset, err := utils.WriteEntryWithPrefix(fh, offset, key, value)
+	newOffset, err := utils.WriteEntryWithPrefix(utils.WriteEntry{
+		F:         fh,
+		Offset:    offset,
+		EntryType: []byte{0},
+		Key:       key,
+		Value:     value,
+	})
 	require.NoError(t, err)
 
-	expectedLen := 4 + 4 + len(key) + len(value)
+	expectedLen := 1 + 4 + 4 + len(key) + len(value)
 	expectedOffset := offset + int64(expectedLen)
 	assert.Equal(t, expectedOffset, newOffset, "unexpected new offset")
 
@@ -41,11 +47,13 @@ func TestWriteEntryWithPrefix(t *testing.T) {
 	_, err = fh.ReadAt(buf, offset)
 	require.NoError(t, err)
 
-	keyLen := binary.BigEndian.Uint32(buf[:4])
-	readKey := buf[8 : 8+keyLen]
-	readValue := buf[8+keyLen:]
+	entryType := buf[0]
+	keyLen := binary.BigEndian.Uint32(buf[1:5])
+	readKey := buf[9 : 9+keyLen]
+	readValue := buf[9+keyLen:]
 
-	// Validate key and value
+	// Validate entryType, key and value
+	assert.Equal(t, byte(0), entryType, "entry type mismatch")
 	assert.Equal(t, key, readKey, "key mismatch")
 	assert.Equal(t, value, readValue, "value mismatch")
 }
@@ -67,18 +75,25 @@ func TestReadEntryWithPrefix(t *testing.T) {
 	offset := int64(0)
 
 	// Write entry with prefix
-	_, err = utils.WriteEntryWithPrefix(fh, offset, key, value)
+	_, err = utils.WriteEntryWithPrefix(utils.WriteEntry{
+		F:         fh,
+		Offset:    offset,
+		EntryType: []byte{1},
+		Key:       key,
+		Value:     value,
+	})
 	require.NoError(t, err)
 
 	// Read the entry back
-	readKey, readValue, newOffset, err := utils.ReadEntryWithPrefix(fh, offset)
+	e := utils.ReadEntryWithPrefix(fh, offset)
 	require.NoError(t, err)
 
 	// Validate key and value
-	assert.Equal(t, key, readKey, "key mismatch")
-	assert.Equal(t, value, readValue, "value mismatch")
+	assert.Equal(t, key, e.Key, "key mismatch")
+	assert.Equal(t, value, e.Value, "value mismatch")
 
-	expectedLen := 4 + 4 + len(key) + len(value)
+	expectedLen := 1 + 4 + 4 + len(key) + len(value)
 	expectedOffset := offset + int64(expectedLen)
-	assert.Equal(t, expectedOffset, newOffset, "unexpected new offset")
+	assert.Equal(t, expectedOffset, e.NewOffset, "unexpected new offset")
+	assert.Equal(t, byte(1), e.Type, "entry type mismatch")
 }
