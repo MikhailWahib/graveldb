@@ -55,21 +55,21 @@ func (r *SSTReader) Open(filename string) error {
 	end := indexOffset + indexSize
 
 	for offset < end {
-		key, _, newOffset, err := utils.ReadEntryWithPrefix(r.file, offset)
-		if err != nil {
+		e := utils.ReadEntryWithPrefix(r.file, offset)
+		if e.Err != nil {
 			return fmt.Errorf("failed to read index entry: %w", err)
 		}
 
 		// Read offset immediately after key
 		offsetBuf := make([]byte, 8)
-		_, err = r.file.ReadAt(offsetBuf, newOffset)
+		_, err = r.file.ReadAt(offsetBuf, e.NewOffset)
 		if err != nil {
 			return fmt.Errorf("failed to read index offset: %w", err)
 		}
 		dataOffset := int64(binary.BigEndian.Uint64(offsetBuf))
-		index = append(index, IndexEntry{Key: key, Offset: dataOffset})
+		index = append(index, IndexEntry{Key: e.Key, Offset: dataOffset})
 
-		offset = newOffset + 8
+		offset = e.NewOffset + 8
 	}
 
 	r.index = index
@@ -94,18 +94,28 @@ func (r *SSTReader) Lookup(key []byte) ([]byte, error) {
 	// Linear scan from found position
 	offset := r.index[pos].Offset
 	for {
-		k, v, newOffset, err := utils.ReadEntryWithPrefix(r.file, offset)
-		if err != nil {
-			return nil, fmt.Errorf("error reading data entry: %w", err)
+		e := utils.ReadEntryWithPrefix(r.file, offset)
+		if e.Err != nil {
+			return nil, fmt.Errorf("failed to read index entry: %w", e.Err)
 		}
-		cmp := utils.CompareKeys(k, key)
+
+		cmp := utils.CompareKeys(e.Key, key)
 		if cmp == 0 {
-			return v, nil
+			// Key found, with a tombstone check, return nil (not found)
+			if e.Type == byte(DeleteEntry) {
+				return nil, fmt.Errorf("key not found")
+			}
+
+			// Key found, return the value
+			return e.Value, nil
 		}
+
 		if cmp > 0 {
 			break
 		}
-		offset = newOffset
+
+		offset = e.NewOffset
 	}
+
 	return nil, fmt.Errorf("key not found")
 }

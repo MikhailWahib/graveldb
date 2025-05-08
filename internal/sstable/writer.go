@@ -9,12 +9,25 @@ import (
 	"github.com/MikhailWahib/graveldb/internal/utils"
 )
 
+type EntryType byte
+
+const (
+	PutEntry EntryType = iota
+	DeleteEntry
+)
+
 type SSTWriter struct {
 	dm        diskmanager.DiskManager
 	file      diskmanager.FileHandle
 	index     []IndexEntry
 	offset    int64
 	indexSize int64
+}
+
+type Entry struct {
+	Type  EntryType
+	Key   []byte
+	Value []byte
 }
 
 type IndexEntry struct {
@@ -40,18 +53,41 @@ func (w *SSTWriter) Open(filename string) error {
 	return nil
 }
 
+func (w *SSTWriter) AppendPut(key, value []byte) error {
+	return w.writeEntry(Entry{
+		Type:  PutEntry,
+		Key:   key,
+		Value: value,
+	})
+}
+
+func (w *SSTWriter) AppendDelete(key []byte) error {
+	return w.writeEntry(Entry{
+		Type:  DeleteEntry,
+		Key:   key,
+		Value: nil,
+	})
+}
+
 // WriteEntry writes a key-value pair to the data section
-func (w *SSTWriter) WriteEntry(key, value []byte) error {
+func (w *SSTWriter) writeEntry(e Entry) error {
 	entryOffset := w.offset
 
-	// Write the entry prefixed with k,v lengths.
-	n, err := utils.WriteEntryWithPrefix(w.file, w.offset, key, value)
+	// Write the entry prefixed with type byte and k,v lengths.
+	n, err := utils.WriteEntryWithPrefix(utils.WriteEntry{
+		F:         w.file,
+		Offset:    w.offset,
+		EntryType: []byte{byte(e.Type)},
+		Key:       e.Key,
+		Value:     e.Value,
+	})
 	if err != nil {
 		return err
 	}
 	w.offset += n
 
-	w.index = append(w.index, IndexEntry{Key: key, Offset: entryOffset})
+	w.index = append(w.index, IndexEntry{Key: e.Key, Offset: entryOffset})
+
 	return nil
 }
 
@@ -61,7 +97,13 @@ func (w *SSTWriter) WriteIndex(index []IndexEntry) error {
 
 	for _, entry := range index {
 		// Write key with prefix
-		n, err := utils.WriteEntryWithPrefix(w.file, w.offset, entry.Key, nil)
+		n, err := utils.WriteEntryWithPrefix(utils.WriteEntry{
+			F:         w.file,
+			Offset:    w.offset,
+			EntryType: []byte{byte(PutEntry)},
+			Key:       entry.Key,
+			Value:     nil,
+		})
 		if err != nil {
 			return err
 		}

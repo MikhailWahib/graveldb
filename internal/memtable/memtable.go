@@ -1,9 +1,13 @@
 package memtable
 
 import (
+	"fmt"
+
 	"github.com/MikhailWahib/graveldb/internal/diskmanager"
 	"github.com/MikhailWahib/graveldb/internal/wal"
 )
+
+const TOMBSTONE = "TOMBSTONE"
 
 type Memtable interface {
 	// Put inserts a key-value pair into the memtable and appends the operation to the Write-Ahead Log (WAL).
@@ -55,7 +59,6 @@ func NewMemtable(dm diskmanager.DiskManager, walPath string) (Memtable, error) {
 }
 
 func (m *SkiplistMemtable) Put(key, value string) error {
-	// Append the operation to the Write-Ahead Log (WAL)
 	err := m.wal.AppendPut(key, value)
 	if err != nil {
 		return err
@@ -70,13 +73,24 @@ func (m *SkiplistMemtable) Get(key string) (string, bool) {
 }
 
 func (m *SkiplistMemtable) Delete(key string) error {
-	// Append the delete operation to the Write-Ahead Log (WAL)
 	err := m.wal.AppendDelete(key)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to append delete operation to WAL: %v", err)
 	}
 
-	m.sl.Delete(key)
+	val, ok := m.sl.Get(key)
+
+	// Ignore the case where the key is already deleted
+	if val == TOMBSTONE {
+		return nil
+	}
+
+	if ok {
+		m.sl.Delete(key)
+		return nil
+	}
+
+	m.sl.Put(key, TOMBSTONE)
 	return nil
 }
 

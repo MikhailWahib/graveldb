@@ -7,18 +7,23 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/MikhailWahib/graveldb/internal/diskmanager"
 	"github.com/MikhailWahib/graveldb/internal/diskmanager/mockdm"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
-func TestSSTableWriteRead(t *testing.T) {
+func setup(t *testing.T) (string, diskmanager.DiskManager) {
 	tempDir := filepath.Join(os.TempDir(), "sstable_test")
-	defer os.RemoveAll(tempDir)
 	err := os.MkdirAll(tempDir, 0755)
 	require.NoError(t, err)
 
 	dm := mockdm.NewMockDiskManager()
+	return tempDir, dm
+}
+
+func TestSSTableWriteRead(t *testing.T) {
+	tempDir, dm := setup(t)
 
 	testData := []struct {
 		key   string
@@ -33,12 +38,12 @@ func TestSSTableWriteRead(t *testing.T) {
 	// Create the SSTable
 	sstPath := filepath.Join(tempDir, "test.sst")
 	writer := NewSSTWriter(dm)
-	err = writer.Open(sstPath)
+	err := writer.Open(sstPath)
 	require.NoError(t, err)
 
 	// Write entries
 	for _, data := range testData {
-		err = writer.WriteEntry([]byte(data.key), []byte(data.value))
+		err = writer.AppendPut([]byte(data.key), []byte(data.value))
 		require.NoError(t, err)
 	}
 
@@ -66,20 +71,18 @@ func TestSSTableWriteRead(t *testing.T) {
 }
 
 func TestSSTableEmptyValue(t *testing.T) {
-	tempDir := filepath.Join(os.TempDir(), "sstable_test_empty")
+	tempDir, dm := setup(t)
 	defer os.RemoveAll(tempDir)
-	err := os.MkdirAll(tempDir, 0755)
-	require.NoError(t, err)
 
-	dm := mockdm.NewMockDiskManager()
 	sstPath := filepath.Join(tempDir, "empty_value.sst")
 
 	// Create SSTable with empty values
 	writer := NewSSTWriter(dm)
-	err = writer.Open(sstPath)
+	err := writer.Open(sstPath)
 	require.NoError(t, err)
 
-	err = writer.WriteEntry([]byte("key1"), []byte{})
+	err = writer.AppendPut([]byte("key1"), []byte(""))
+
 	require.NoError(t, err)
 
 	err = writer.Finish()
@@ -99,17 +102,14 @@ func TestSSTableEmptyValue(t *testing.T) {
 }
 
 func TestSSTableLargeKeyValues(t *testing.T) {
-	tempDir := filepath.Join(os.TempDir(), "sstable_test_large")
+	tempDir, dm := setup(t)
 	defer os.RemoveAll(tempDir)
-	err := os.MkdirAll(tempDir, 0755)
-	require.NoError(t, err)
 
-	dm := mockdm.NewMockDiskManager()
 	sstPath := filepath.Join(tempDir, "large_data.sst")
 
 	// Create SSTable with large values
 	writer := NewSSTWriter(dm)
-	err = writer.Open(sstPath)
+	err := writer.Open(sstPath)
 	require.NoError(t, err)
 
 	// Create a 100KB value
@@ -124,11 +124,12 @@ func TestSSTableLargeKeyValues(t *testing.T) {
 		largeKey[i] = byte((i * 7) % 256)
 	}
 
-	err = writer.WriteEntry(largeKey, largeValue)
+	err = writer.AppendPut(largeKey, largeValue)
 	require.NoError(t, err)
 
 	// Add a normal key after the large one
-	err = writer.WriteEntry([]byte("small-key"), []byte("small-value"))
+	err = writer.AppendPut([]byte("small-key"), []byte("small-value"))
+
 	require.NoError(t, err)
 
 	err = writer.Finish()
@@ -160,8 +161,7 @@ func BenchmarkSSTableWriting(b *testing.B) {
 
 	dm := mockdm.NewMockDiskManager()
 
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		b.StopTimer()
 		sstPath := filepath.Join(tempDir, "bench_write.sst")
 		writer := NewSSTWriter(dm)
@@ -169,10 +169,11 @@ func BenchmarkSSTableWriting(b *testing.B) {
 		b.StartTimer()
 
 		// Write 1000 entries
-		for j := 0; j < 1000; j++ {
-			key := []byte(fmt.Sprintf("key-%d", j))
-			value := []byte(fmt.Sprintf("value-%d", j))
-			err := writer.WriteEntry(key, value)
+		for j := range 1000 {
+			key := fmt.Appendf(nil, "key-%d", j)
+			value := fmt.Appendf(nil, "value-%d", j)
+			err := writer.AppendPut(key, value)
+
 			if err != nil {
 				b.Fatalf("Failed to write entry: %v", err)
 			}
@@ -194,10 +195,10 @@ func BenchmarkSSTableReading(b *testing.B) {
 	writer.Open(sstPath)
 
 	// Write 1000 entries
-	for j := 0; j < 1000; j++ {
-		key := []byte(fmt.Sprintf("key-%d", j))
-		value := []byte(fmt.Sprintf("value-%d", j))
-		writer.WriteEntry(key, value)
+	for j := range 1000 {
+		key := fmt.Appendf(nil, "key-%d", j)
+		value := fmt.Appendf(nil, "value-%d", j)
+		writer.AppendPut(key, value)
 	}
 	writer.Finish()
 
@@ -205,17 +206,16 @@ func BenchmarkSSTableReading(b *testing.B) {
 	reader := NewSSTReader(dm)
 	reader.Open(sstPath)
 
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for i := 0; b.Loop(); i++ {
 		// Look up a random key
 		keyNum := i % 1000
-		key := []byte(fmt.Sprintf("key-%d", keyNum))
+		key := fmt.Appendf(nil, "key-%d", keyNum)
 		value, err := reader.Lookup(key)
 		if err != nil {
 			b.Fatalf("Failed to lookup key: %v", err)
 		}
 
-		expectedValue := []byte(fmt.Sprintf("value-%d", keyNum))
+		expectedValue := fmt.Appendf(nil, "value-%d", keyNum)
 		if !bytes.Equal(value, expectedValue) {
 			b.Fatalf("Value mismatch: got %s, want %s", string(value), string(expectedValue))
 		}
@@ -223,21 +223,19 @@ func BenchmarkSSTableReading(b *testing.B) {
 }
 
 func TestNonExistentKeyLookup(t *testing.T) {
-	tempDir := filepath.Join(os.TempDir(), "sstable_test_missing")
+	tempDir, dm := setup(t)
 	defer os.RemoveAll(tempDir)
-	err := os.MkdirAll(tempDir, 0755)
-	require.NoError(t, err)
 
-	dm := mockdm.NewMockDiskManager()
 	sstPath := filepath.Join(tempDir, "test_missing.sst")
 
 	// Create the SSTable with some entries
 	writer := NewSSTWriter(dm)
 	writer.Open(sstPath)
 
-	writer.WriteEntry([]byte("a"), []byte("value-a"))
-	writer.WriteEntry([]byte("c"), []byte("value-c"))
-	writer.WriteEntry([]byte("e"), []byte("value-e"))
+	writer.AppendPut([]byte("a"), []byte("apple"))
+	writer.AppendPut([]byte("c"), []byte("cherry"))
+	writer.AppendPut([]byte("e"), []byte("eheee"))
+
 	writer.Finish()
 
 	// Read the SSTable

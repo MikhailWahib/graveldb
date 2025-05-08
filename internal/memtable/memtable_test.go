@@ -96,3 +96,28 @@ func TestMemtable_Replay(t *testing.T) {
 	_, ok = mt2.Get("beta")
 	assert.False(t, ok, "expected beta to be deleted after replay")
 }
+
+func TestMemtable_Tombstone(t *testing.T) {
+	dir := setupTempDir(t)
+	defer os.RemoveAll(dir)
+
+	dm := mockdm.NewMockDiskManager()
+	mt, err := memtable.NewMemtable(dm, filepath.Join(dir, "wal.log"))
+	require.NoError(t, err, "failed to create memtable")
+
+	// Try to delete a non-existent key as if it was flushed to sstable before
+	err = mt.Delete("key1")
+	require.NoError(t, err, "Delete failed")
+
+	val, ok := mt.Get("key1")
+	assert.True(t, ok, "expected key1 to exist after delete")
+	assert.Equal(t, memtable.TOMBSTONE, val, "expected TOMBSTONE value")
+
+	// Try to delete the key again
+	err = mt.Delete("key1")
+	require.NoError(t, err, "Delete failed again")
+
+	val, ok = mt.Get("key1")
+	assert.True(t, ok, "expected key1 to not be deleted")
+	assert.Equal(t, memtable.TOMBSTONE, val, "expected value remains TOMBSTONE")
+}
