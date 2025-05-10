@@ -4,6 +4,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/MikhailWahib/graveldb/internal/common"
 	"github.com/MikhailWahib/graveldb/internal/diskmanager"
 	"github.com/MikhailWahib/graveldb/internal/wal"
 	"github.com/stretchr/testify/assert"
@@ -77,9 +78,9 @@ func TestWAL_Replay(t *testing.T) {
 
 	for i, entry := range entries {
 		e := expected[i]
-		expectedType := wal.PutEntry
+		expectedType := common.PutEntry
 		if e.op == "delete" {
-			expectedType = wal.DeleteEntry
+			expectedType = common.DeleteEntry
 		}
 
 		assert.Equal(t, expectedType, entry.Type, "Entry type mismatch")

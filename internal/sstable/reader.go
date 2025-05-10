@@ -6,6 +6,7 @@ import (
 	"os"
 	"sort"
 
+	"github.com/MikhailWahib/graveldb/internal/common"
 	"github.com/MikhailWahib/graveldb/internal/diskmanager"
 	"github.com/MikhailWahib/graveldb/internal/utils"
 )
@@ -102,7 +103,7 @@ func (r *SSTReader) Lookup(key []byte) ([]byte, error) {
 		cmp := utils.CompareKeys(e.Key, key)
 		if cmp == 0 {
 			// Key found, with a tombstone check, return nil (not found)
-			if e.Type == byte(DeleteEntry) {
+			if common.EntryType(e.Type) == common.DeleteEntry {
 				return nil, fmt.Errorf("key not found")
 			}
 

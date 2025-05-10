@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/MikhailWahib/graveldb/internal/common"
 	"github.com/MikhailWahib/graveldb/internal/diskmanager/mockdm"
 	"github.com/MikhailWahib/graveldb/internal/utils"
 	"github.com/stretchr/testify/assert"
@@ -30,11 +31,11 @@ func TestWriteEntryWithPrefix(t *testing.T) {
 
 	// Write entry with prefix
 	newOffset, err := utils.WriteEntryWithPrefix(utils.WriteEntry{
-		F:         fh,
-		Offset:    offset,
-		EntryType: []byte{0},
-		Key:       key,
-		Value:     value,
+		F:      fh,
+		Offset: offset,
+		Type:   common.PutEntry,
+		Key:    key,
+		Value:  value,
 	})
 	require.NoError(t, err)
 
@@ -53,7 +54,7 @@ func TestWriteEntryWithPrefix(t *testing.T) {
 	readValue := buf[9+keyLen:]
 
 	// Validate entryType, key and value
-	assert.Equal(t, byte(0), entryType, "entry type mismatch")
+	assert.Equal(t, common.PutEntry, common.EntryType(entryType), "entry type mismatch")
 	assert.Equal(t, key, readKey, "key mismatch")
 	assert.Equal(t, value, readValue, "value mismatch")
 }
@@ -76,11 +77,11 @@ func TestReadEntryWithPrefix(t *testing.T) {
 
 	// Write entry with prefix
 	_, err = utils.WriteEntryWithPrefix(utils.WriteEntry{
-		F:         fh,
-		Offset:    offset,
-		EntryType: []byte{1},
-		Key:       key,
-		Value:     value,
+		F:      fh,
+		Offset: offset,
+		Type:   common.DeleteEntry,
+		Key:    key,
+		Value:  value,
 	})
 	require.NoError(t, err)
 
@@ -95,5 +96,5 @@ func TestReadEntryWithPrefix(t *testing.T) {
 	expectedLen := 1 + 4 + 4 + len(key) + len(value)
 	expectedOffset := offset + int64(expectedLen)
 	assert.Equal(t, expectedOffset, e.NewOffset, "unexpected new offset")
-	assert.Equal(t, byte(1), e.Type, "entry type mismatch")
+	assert.Equal(t, common.DeleteEntry, common.EntryType(e.Type), "entry type mismatch")
 }

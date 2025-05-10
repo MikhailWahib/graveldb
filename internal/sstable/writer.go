@@ -5,15 +5,9 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/MikhailWahib/graveldb/internal/common"
 	"github.com/MikhailWahib/graveldb/internal/diskmanager"
 	"github.com/MikhailWahib/graveldb/internal/utils"
-)
-
-type EntryType byte
-
-const (
-	PutEntry EntryType = iota
-	DeleteEntry
 )
 
 type SSTWriter struct {
@@ -25,7 +19,7 @@ type SSTWriter struct {
 }
 
 type Entry struct {
-	Type  EntryType
+	Type  common.EntryType
 	Key   []byte
 	Value []byte
 }
@@ -55,7 +49,7 @@ func (w *SSTWriter) Open(filename string) error {
 
 func (w *SSTWriter) AppendPut(key, value []byte) error {
 	return w.writeEntry(Entry{
-		Type:  PutEntry,
+		Type:  common.PutEntry,
 		Key:   key,
 		Value: value,
 	})
@@ -63,7 +57,7 @@ func (w *SSTWriter) AppendPut(key, value []byte) error {
 
 func (w *SSTWriter) AppendDelete(key []byte) error {
 	return w.writeEntry(Entry{
-		Type:  DeleteEntry,
+		Type:  common.DeleteEntry,
 		Key:   key,
 		Value: nil,
 	})
@@ -75,11 +69,11 @@ func (w *SSTWriter) writeEntry(e Entry) error {
 
 	// Write the entry prefixed with type byte and k,v lengths.
 	n, err := utils.WriteEntryWithPrefix(utils.WriteEntry{
-		F:         w.file,
-		Offset:    w.offset,
-		EntryType: []byte{byte(e.Type)},
-		Key:       e.Key,
-		Value:     e.Value,
+		F:      w.file,
+		Offset: w.offset,
+		Type:   common.EntryType(e.Type),
+		Key:    e.Key,
+		Value:  e.Value,
 	})
 	if err != nil {
 		return err
@@ -98,11 +92,11 @@ func (w *SSTWriter) WriteIndex(index []IndexEntry) error {
 	for _, entry := range index {
 		// Write key with prefix
 		n, err := utils.WriteEntryWithPrefix(utils.WriteEntry{
-			F:         w.file,
-			Offset:    w.offset,
-			EntryType: []byte{byte(PutEntry)},
-			Key:       entry.Key,
-			Value:     nil,
+			F:      w.file,
+			Offset: w.offset,
+			Type:   common.PutEntry,
+			Key:    entry.Key,
+			Value:  nil,
 		})
 		if err != nil {
 			return err

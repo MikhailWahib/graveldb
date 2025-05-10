@@ -1,4 +1,4 @@
-package sstable
+package sstable_test
 
 import (
 	"bytes"
@@ -9,6 +9,7 @@ import (
 
 	"github.com/MikhailWahib/graveldb/internal/diskmanager"
 	"github.com/MikhailWahib/graveldb/internal/diskmanager/mockdm"
+	"github.com/MikhailWahib/graveldb/internal/sstable"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -37,7 +38,7 @@ func TestSSTableWriteRead(t *testing.T) {
 
 	// Create the SSTable
 	sstPath := filepath.Join(tempDir, "test.sst")
-	writer := NewSSTWriter(dm)
+	writer := sstable.NewSSTWriter(dm)
 	err := writer.Open(sstPath)
 	require.NoError(t, err)
 
@@ -52,7 +53,7 @@ func TestSSTableWriteRead(t *testing.T) {
 	require.NoError(t, err)
 
 	// Read the SSTable
-	reader := NewSSTReader(dm)
+	reader := sstable.NewSSTReader(dm)
 	err = reader.Open(sstPath)
 	require.NoError(t, err)
 
@@ -77,7 +78,7 @@ func TestSSTableEmptyValue(t *testing.T) {
 	sstPath := filepath.Join(tempDir, "empty_value.sst")
 
 	// Create SSTable with empty values
-	writer := NewSSTWriter(dm)
+	writer := sstable.NewSSTWriter(dm)
 	err := writer.Open(sstPath)
 	require.NoError(t, err)
 
@@ -89,7 +90,7 @@ func TestSSTableEmptyValue(t *testing.T) {
 	require.NoError(t, err)
 
 	// Read the SSTable
-	reader := NewSSTReader(dm)
+	reader := sstable.NewSSTReader(dm)
 	err = reader.Open(sstPath)
 	require.NoError(t, err)
 
@@ -108,7 +109,7 @@ func TestSSTableLargeKeyValues(t *testing.T) {
 	sstPath := filepath.Join(tempDir, "large_data.sst")
 
 	// Create SSTable with large values
-	writer := NewSSTWriter(dm)
+	writer := sstable.NewSSTWriter(dm)
 	err := writer.Open(sstPath)
 	require.NoError(t, err)
 
@@ -136,7 +137,7 @@ func TestSSTableLargeKeyValues(t *testing.T) {
 	require.NoError(t, err)
 
 	// Read the SSTable
-	reader := NewSSTReader(dm)
+	reader := sstable.NewSSTReader(dm)
 	err = reader.Open(sstPath)
 	require.NoError(t, err)
 
@@ -164,7 +165,7 @@ func BenchmarkSSTableWriting(b *testing.B) {
 	for b.Loop() {
 		b.StopTimer()
 		sstPath := filepath.Join(tempDir, "bench_write.sst")
-		writer := NewSSTWriter(dm)
+		writer := sstable.NewSSTWriter(dm)
 		writer.Open(sstPath)
 		b.StartTimer()
 
@@ -191,7 +192,7 @@ func BenchmarkSSTableReading(b *testing.B) {
 	sstPath := filepath.Join(tempDir, "bench_read.sst")
 
 	// Create a benchmark SSTable first
-	writer := NewSSTWriter(dm)
+	writer := sstable.NewSSTWriter(dm)
 	writer.Open(sstPath)
 
 	// Write 1000 entries
@@ -203,7 +204,7 @@ func BenchmarkSSTableReading(b *testing.B) {
 	writer.Finish()
 
 	// Now benchmark lookups
-	reader := NewSSTReader(dm)
+	reader := sstable.NewSSTReader(dm)
 	reader.Open(sstPath)
 
 	for i := 0; b.Loop(); i++ {
@@ -229,7 +230,7 @@ func TestNonExistentKeyLookup(t *testing.T) {
 	sstPath := filepath.Join(tempDir, "test_missing.sst")
 
 	// Create the SSTable with some entries
-	writer := NewSSTWriter(dm)
+	writer := sstable.NewSSTWriter(dm)
 	writer.Open(sstPath)
 
 	writer.AppendPut([]byte("a"), []byte("apple"))
@@ -239,7 +240,7 @@ func TestNonExistentKeyLookup(t *testing.T) {
 	writer.Finish()
 
 	// Read the SSTable
-	reader := NewSSTReader(dm)
+	reader := sstable.NewSSTReader(dm)
 	reader.Open(sstPath)
 
 	// Test lookup for keys that don't exist but are within range

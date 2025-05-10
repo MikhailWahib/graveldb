@@ -3,6 +3,7 @@ package memtable
 import (
 	"fmt"
 
+	"github.com/MikhailWahib/graveldb/internal/common"
 	"github.com/MikhailWahib/graveldb/internal/diskmanager"
 	"github.com/MikhailWahib/graveldb/internal/wal"
 )
@@ -48,9 +49,9 @@ func NewMemtable(dm diskmanager.DiskManager, walPath string) (Memtable, error) {
 
 	for _, e := range entries {
 		switch e.Type {
-		case wal.PutEntry:
+		case common.PutEntry:
 			mt.sl.Put(e.Key, e.Value)
-		case wal.DeleteEntry:
+		case common.DeleteEntry:
 			mt.sl.Delete(e.Key)
 		}
 	}

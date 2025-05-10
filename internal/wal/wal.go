@@ -4,19 +4,13 @@ import (
 	"io"
 	"os"
 
+	"github.com/MikhailWahib/graveldb/internal/common"
 	"github.com/MikhailWahib/graveldb/internal/diskmanager"
 	"github.com/MikhailWahib/graveldb/internal/utils"
 )
 
-type EntryType byte
-
-const (
-	PutEntry EntryType = iota
-	DeleteEntry
-)
-
 type Entry struct {
-	Type  EntryType
+	Type  common.EntryType
 	Key   string
 	Value string
 }
@@ -52,7 +46,7 @@ func NewWAL(dm diskmanager.DiskManager, path string) (*WAL, error) {
 // AppendPut appends a put operation to the WAL
 func (w *WAL) AppendPut(key, value string) error {
 	return w.writeEntry(Entry{
-		Type:  PutEntry,
+		Type:  common.PutEntry,
 		Key:   key,
 		Value: value,
 	})
@@ -61,7 +55,7 @@ func (w *WAL) AppendPut(key, value string) error {
 // AppendDelete appends a delete operation to the WAL
 func (w *WAL) AppendDelete(key string) error {
 	return w.writeEntry(Entry{
-		Type:  DeleteEntry,
+		Type:  common.DeleteEntry,
 		Key:   key,
 		Value: "",
 	})
@@ -73,11 +67,11 @@ func (w *WAL) writeEntry(e Entry) error {
 	// Write the entry type, key length, value length, key, and value.
 	// offset added by one because of the added byte above.
 	n, err := utils.WriteEntryWithPrefix(utils.WriteEntry{
-		F:         w.file,
-		Offset:    w.writeOffset,
-		EntryType: []byte{byte(e.Type)},
-		Key:       []byte(e.Key),
-		Value:     []byte(e.Value),
+		F:      w.file,
+		Offset: w.writeOffset,
+		Type:   common.EntryType(e.Type),
+		Key:    []byte(e.Key),
+		Value:  []byte(e.Value),
 	})
 	if err != nil {
 		return err
@@ -107,7 +101,7 @@ func (w *WAL) Replay() ([]Entry, error) {
 		offset = e.NewOffset
 
 		entry := Entry{
-			Type:  EntryType(e.Type),
+			Type:  common.EntryType(e.Type),
 			Key:   string(e.Key),
 			Value: string(e.Value),
 		}
