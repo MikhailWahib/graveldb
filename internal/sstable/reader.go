@@ -10,6 +10,12 @@ import (
 	"github.com/MikhailWahib/graveldb/internal/shared"
 )
 
+const (
+	IndexOffsetSize = 8
+	IndexSizeSize   = 8
+	FooterSize      = IndexOffsetSize + IndexSizeSize
+)
+
 type SSTReader struct {
 	dm        diskmanager.DiskManager
 	file      diskmanager.FileHandle
@@ -28,25 +34,25 @@ func (r *SSTReader) Open(filename string) error {
 	}
 	r.file = file
 
-	// Load footer: last 16 bytes
+	// Load footer
 	stat, err := r.file.Stat()
 	if err != nil {
 		return fmt.Errorf("failed to stat SST file: %w", err)
 	}
 
-	if stat.Size() < 16 {
+	if stat.Size() < FooterSize {
 		return fmt.Errorf("file too small to be valid SSTable")
 	}
 
-	footerOffset := stat.Size() - 16
-	buf := make([]byte, 16)
+	footerOffset := stat.Size() - FooterSize
+	buf := make([]byte, FooterSize)
 	_, err = r.file.ReadAt(buf, footerOffset)
 	if err != nil {
 		return fmt.Errorf("failed to read footer: %w", err)
 	}
 
-	indexOffset := int64(binary.BigEndian.Uint64(buf[:8]))
-	indexSize := int64(binary.BigEndian.Uint64(buf[8:16]))
+	indexOffset := int64(binary.BigEndian.Uint64(buf[:IndexOffsetSize]))
+	indexSize := int64(binary.BigEndian.Uint64(buf[IndexOffsetSize:FooterSize]))
 	r.indexBase = indexOffset
 
 	// Parse sparse index
@@ -55,21 +61,21 @@ func (r *SSTReader) Open(filename string) error {
 	end := indexOffset + indexSize
 
 	for offset < end {
-		e := shared.ReadEntryWithPrefix(r.file, offset)
-		if e.Err != nil {
+		entry, err := shared.ReadEntry(r.file, offset)
+		if err != nil {
 			return fmt.Errorf("failed to read index entry: %w", err)
 		}
 
 		// Read offset immediately after key
 		offsetBuf := make([]byte, 8)
-		_, err = r.file.ReadAt(offsetBuf, e.NewOffset)
+		_, err = r.file.ReadAt(offsetBuf, entry.NewOffset)
 		if err != nil {
 			return fmt.Errorf("failed to read index offset: %w", err)
 		}
 		dataOffset := int64(binary.BigEndian.Uint64(offsetBuf))
-		index = append(index, IndexEntry{Key: e.Key, Offset: dataOffset})
+		index = append(index, IndexEntry{Key: entry.Key, Offset: dataOffset})
 
-		offset = e.NewOffset + 8
+		offset = entry.NewOffset + 8
 	}
 
 	r.index = index
@@ -94,27 +100,27 @@ func (r *SSTReader) Lookup(key []byte) ([]byte, error) {
 	// Linear scan from found position
 	offset := r.index[pos].Offset
 	for {
-		e := shared.ReadEntryWithPrefix(r.file, offset)
-		if e.Err != nil {
-			return nil, fmt.Errorf("failed to read index entry: %w", e.Err)
+		entry, err := shared.ReadEntry(r.file, offset)
+		if err != nil {
+			return nil, fmt.Errorf("failed to read index entry: %w", err)
 		}
 
-		cmp := shared.CompareKeys(e.Key, key)
+		cmp := shared.CompareKeys(entry.Key, key)
 		if cmp == 0 {
 			// Key found, with a tombstone check, return nil (not found)
-			if shared.EntryType(e.Type) == shared.DeleteEntry {
+			if shared.EntryType(entry.Type) == shared.DeleteEntry {
 				return nil, fmt.Errorf("key not found")
 			}
 
 			// Key found, return the value
-			return e.Value, nil
+			return entry.Value, nil
 		}
 
 		if cmp > 0 {
 			break
 		}
 
-		offset = e.NewOffset
+		offset = entry.NewOffset
 	}
 
 	return nil, fmt.Errorf("key not found")

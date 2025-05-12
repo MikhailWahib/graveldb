@@ -8,7 +8,7 @@ import (
 	"github.com/MikhailWahib/graveldb/internal/shared"
 )
 
-type Entry struct {
+type WALEntry struct {
 	Type  shared.EntryType
 	Key   string
 	Value string
@@ -44,7 +44,7 @@ func NewWAL(dm diskmanager.DiskManager, path string) (*WAL, error) {
 
 // AppendPut appends a put operation to the WAL
 func (w *WAL) AppendPut(key, value string) error {
-	return w.writeEntry(Entry{
+	return w.writeEntry(WALEntry{
 		Type:  shared.PutEntry,
 		Key:   key,
 		Value: value,
@@ -53,7 +53,7 @@ func (w *WAL) AppendPut(key, value string) error {
 
 // AppendDelete appends a delete operation to the WAL
 func (w *WAL) AppendDelete(key string) error {
-	return w.writeEntry(Entry{
+	return w.writeEntry(WALEntry{
 		Type:  shared.DeleteEntry,
 		Key:   key,
 		Value: "",
@@ -62,15 +62,15 @@ func (w *WAL) AppendDelete(key string) error {
 
 // writeEntry formats an entry and writes it using the file handle
 // Format: [1 byte Type][4 bytes KeyLen][4 bytes ValueLen][Key][Value]
-func (w *WAL) writeEntry(e Entry) error {
+func (w *WAL) writeEntry(e WALEntry) error {
 	// Write the entry type, key length, value length, key, and value.
 	// offset added by one because of the added byte above.
-	n, err := shared.WriteEntryWithPrefix(shared.WriteEntry{
-		FileHandle: w.file,
-		Offset:     w.writeOffset,
-		Type:       shared.EntryType(e.Type),
-		Key:        []byte(e.Key),
-		Value:      []byte(e.Value),
+	n, err := shared.WriteEntry(shared.Entry{
+		File:   w.file,
+		Offset: w.writeOffset,
+		Type:   shared.EntryType(e.Type),
+		Key:    []byte(e.Key),
+		Value:  []byte(e.Value),
 	})
 	if err != nil {
 		return err
@@ -84,30 +84,30 @@ func (w *WAL) writeEntry(e Entry) error {
 }
 
 // Replay reads all WAL entries from the beginning of the file
-func (w *WAL) Replay() ([]Entry, error) {
-	var entries []Entry
+func (w *WAL) Replay() ([]WALEntry, error) {
+	var walEntries []WALEntry
 	var offset int64 = 0
 
 	for {
-		e := shared.ReadEntryWithPrefix(w.file, offset)
-		if e.Err != nil {
-			if e.Err == io.EOF || e.NewOffset == 0 {
+		entry, err := shared.ReadEntry(w.file, offset)
+		if err != nil {
+			if err == io.EOF || entry.NewOffset == 0 {
 				break
 			}
 
-			return nil, e.Err
+			return nil, err
 		}
-		offset = e.NewOffset
+		offset = entry.NewOffset
 
-		entry := Entry{
-			Type:  shared.EntryType(e.Type),
-			Key:   string(e.Key),
-			Value: string(e.Value),
+		walEntry := WALEntry{
+			Type:  shared.EntryType(entry.Type),
+			Key:   string(entry.Key),
+			Value: string(entry.Value),
 		}
-		entries = append(entries, entry)
+		walEntries = append(walEntries, walEntry)
 	}
 
-	return entries, nil
+	return walEntries, nil
 }
 
 // Sync ensures all data is persisted to disk

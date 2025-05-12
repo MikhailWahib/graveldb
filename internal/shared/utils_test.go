@@ -12,7 +12,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestWriteEntryWithPrefix(t *testing.T) {
+func TestWriteEntry(t *testing.T) {
 	dir := t.TempDir()
 	filePath := filepath.Join(dir, "test.db")
 
@@ -29,12 +29,12 @@ func TestWriteEntryWithPrefix(t *testing.T) {
 	offset := int64(0)
 
 	// Write entry with prefix
-	newOffset, err := shared.WriteEntryWithPrefix(shared.WriteEntry{
-		FileHandle: fh,
-		Offset:     offset,
-		Type:       shared.PutEntry,
-		Key:        key,
-		Value:      value,
+	newOffset, err := shared.WriteEntry(shared.Entry{
+		File:   fh,
+		Offset: offset,
+		Type:   shared.PutEntry,
+		Key:    key,
+		Value:  value,
 	})
 	require.NoError(t, err)
 
@@ -58,7 +58,7 @@ func TestWriteEntryWithPrefix(t *testing.T) {
 	assert.Equal(t, value, readValue, "value mismatch")
 }
 
-func TestReadEntryWithPrefix(t *testing.T) {
+func TestReadEntry(t *testing.T) {
 	dir := t.TempDir()
 	filePath := filepath.Join(dir, "test.db")
 
@@ -75,25 +75,25 @@ func TestReadEntryWithPrefix(t *testing.T) {
 	offset := int64(0)
 
 	// Write entry with prefix
-	_, err = shared.WriteEntryWithPrefix(shared.WriteEntry{
-		FileHandle: fh,
-		Offset:     offset,
-		Type:       shared.DeleteEntry,
-		Key:        key,
-		Value:      value,
+	_, err = shared.WriteEntry(shared.Entry{
+		File:   fh,
+		Offset: offset,
+		Type:   shared.DeleteEntry,
+		Key:    key,
+		Value:  value,
 	})
 	require.NoError(t, err)
 
 	// Read the entry back
-	e := shared.ReadEntryWithPrefix(fh, offset)
+	entry, err := shared.ReadEntry(fh, offset)
 	require.NoError(t, err)
 
 	// Validate key and value
-	assert.Equal(t, key, e.Key, "key mismatch")
-	assert.Equal(t, value, e.Value, "value mismatch")
+	assert.Equal(t, key, entry.Key, "key mismatch")
+	assert.Equal(t, value, entry.Value, "value mismatch")
 
 	expectedLen := 1 + 4 + 4 + len(key) + len(value)
 	expectedOffset := offset + int64(expectedLen)
-	assert.Equal(t, expectedOffset, e.NewOffset, "unexpected new offset")
-	assert.Equal(t, shared.DeleteEntry, shared.EntryType(e.Type), "entry type mismatch")
+	assert.Equal(t, expectedOffset, entry.NewOffset, "unexpected new offset")
+	assert.Equal(t, shared.DeleteEntry, shared.EntryType(entry.Type), "entry type mismatch")
 }

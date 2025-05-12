@@ -38,11 +38,11 @@ func NewSSTWriter(dm diskmanager.DiskManager) *SSTWriter {
 
 // Open prepares the writer for a new SSTable file
 func (w *SSTWriter) Open(filename string) error {
-	fileHandle, err := w.dm.Open(filename, os.O_RDWR|os.O_CREATE, 0644)
+	file, err := w.dm.Open(filename, os.O_RDWR|os.O_CREATE, 0644)
 	if err != nil {
 		return err
 	}
-	w.file = fileHandle
+	w.file = file
 	return nil
 }
 
@@ -67,12 +67,12 @@ func (w *SSTWriter) writeEntry(e Entry) error {
 	entryOffset := w.offset
 
 	// Write the entry prefixed with type byte and k,v lengths.
-	n, err := shared.WriteEntryWithPrefix(shared.WriteEntry{
-		FileHandle: w.file,
-		Offset:     w.offset,
-		Type:       shared.EntryType(e.Type),
-		Key:        e.Key,
-		Value:      e.Value,
+	n, err := shared.WriteEntry(shared.Entry{
+		File:   w.file,
+		Offset: w.offset,
+		Type:   shared.EntryType(e.Type),
+		Key:    e.Key,
+		Value:  e.Value,
 	})
 	if err != nil {
 		return err
@@ -90,12 +90,12 @@ func (w *SSTWriter) WriteIndex(index []IndexEntry) error {
 
 	for _, entry := range index {
 		// Write key with prefix
-		n, err := shared.WriteEntryWithPrefix(shared.WriteEntry{
-			FileHandle: w.file,
-			Offset:     w.offset,
-			Type:       shared.PutEntry,
-			Key:        entry.Key,
-			Value:      nil,
+		n, err := shared.WriteEntry(shared.Entry{
+			File:   w.file,
+			Offset: w.offset,
+			Type:   shared.PutEntry,
+			Key:    entry.Key,
+			Value:  nil,
 		})
 		if err != nil {
 			return err
