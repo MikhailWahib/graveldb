@@ -6,9 +6,8 @@ import (
 	"os"
 	"sort"
 
-	"github.com/MikhailWahib/graveldb/internal/common"
 	"github.com/MikhailWahib/graveldb/internal/diskmanager"
-	"github.com/MikhailWahib/graveldb/internal/utils"
+	"github.com/MikhailWahib/graveldb/internal/shared"
 )
 
 type SSTReader struct {
@@ -56,7 +55,7 @@ func (r *SSTReader) Open(filename string) error {
 	end := indexOffset + indexSize
 
 	for offset < end {
-		e := utils.ReadEntryWithPrefix(r.file, offset)
+		e := shared.ReadEntryWithPrefix(r.file, offset)
 		if e.Err != nil {
 			return fmt.Errorf("failed to read index entry: %w", err)
 		}
@@ -84,7 +83,7 @@ func (r *SSTReader) Close() error {
 // Lookup performs a binary search over the sparse index and returns the entry if found.
 func (r *SSTReader) Lookup(key []byte) ([]byte, error) {
 	pos := sort.Search(len(r.index), func(i int) bool {
-		return utils.CompareKeys(r.index[i].Key, key) >= 0
+		return shared.CompareKeys(r.index[i].Key, key) >= 0
 	})
 
 	if pos == len(r.index) {
@@ -95,15 +94,15 @@ func (r *SSTReader) Lookup(key []byte) ([]byte, error) {
 	// Linear scan from found position
 	offset := r.index[pos].Offset
 	for {
-		e := utils.ReadEntryWithPrefix(r.file, offset)
+		e := shared.ReadEntryWithPrefix(r.file, offset)
 		if e.Err != nil {
 			return nil, fmt.Errorf("failed to read index entry: %w", e.Err)
 		}
 
-		cmp := utils.CompareKeys(e.Key, key)
+		cmp := shared.CompareKeys(e.Key, key)
 		if cmp == 0 {
 			// Key found, with a tombstone check, return nil (not found)
-			if common.EntryType(e.Type) == common.DeleteEntry {
+			if shared.EntryType(e.Type) == shared.DeleteEntry {
 				return nil, fmt.Errorf("key not found")
 			}
 

@@ -1,19 +1,18 @@
-package utils
+package shared
 
 import (
 	"encoding/binary"
 	"fmt"
 
-	"github.com/MikhailWahib/graveldb/internal/common"
 	"github.com/MikhailWahib/graveldb/internal/diskmanager"
 )
 
 type WriteEntry struct {
-	F      diskmanager.FileHandle
-	Offset int64
-	Type   common.EntryType
-	Key    []byte
-	Value  []byte
+	FileHandle diskmanager.FileHandle
+	Offset     int64
+	Type       EntryType
+	Key        []byte
+	Value      []byte
 }
 
 // WriteEntryWithPrefix writes a key-value or key-only entry to the file using a length-prefixed format.
@@ -33,7 +32,7 @@ func WriteEntryWithPrefix(e WriteEntry) (int64, error) {
 		copy(buf[9+keyLen:], e.Value)
 	}
 
-	n, err := e.F.WriteAt(buf, e.Offset)
+	n, err := e.FileHandle.WriteAt(buf, e.Offset)
 	if err != nil {
 		return 0, fmt.Errorf("failed to write entry: %w", err)
 	}

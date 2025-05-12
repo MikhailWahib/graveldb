@@ -4,13 +4,12 @@ import (
 	"io"
 	"os"
 
-	"github.com/MikhailWahib/graveldb/internal/common"
 	"github.com/MikhailWahib/graveldb/internal/diskmanager"
-	"github.com/MikhailWahib/graveldb/internal/utils"
+	"github.com/MikhailWahib/graveldb/internal/shared"
 )
 
 type Entry struct {
-	Type  common.EntryType
+	Type  shared.EntryType
 	Key   string
 	Value string
 }
@@ -46,7 +45,7 @@ func NewWAL(dm diskmanager.DiskManager, path string) (*WAL, error) {
 // AppendPut appends a put operation to the WAL
 func (w *WAL) AppendPut(key, value string) error {
 	return w.writeEntry(Entry{
-		Type:  common.PutEntry,
+		Type:  shared.PutEntry,
 		Key:   key,
 		Value: value,
 	})
@@ -55,7 +54,7 @@ func (w *WAL) AppendPut(key, value string) error {
 // AppendDelete appends a delete operation to the WAL
 func (w *WAL) AppendDelete(key string) error {
 	return w.writeEntry(Entry{
-		Type:  common.DeleteEntry,
+		Type:  shared.DeleteEntry,
 		Key:   key,
 		Value: "",
 	})
@@ -66,12 +65,12 @@ func (w *WAL) AppendDelete(key string) error {
 func (w *WAL) writeEntry(e Entry) error {
 	// Write the entry type, key length, value length, key, and value.
 	// offset added by one because of the added byte above.
-	n, err := utils.WriteEntryWithPrefix(utils.WriteEntry{
-		F:      w.file,
-		Offset: w.writeOffset,
-		Type:   common.EntryType(e.Type),
-		Key:    []byte(e.Key),
-		Value:  []byte(e.Value),
+	n, err := shared.WriteEntryWithPrefix(shared.WriteEntry{
+		FileHandle: w.file,
+		Offset:     w.writeOffset,
+		Type:       shared.EntryType(e.Type),
+		Key:        []byte(e.Key),
+		Value:      []byte(e.Value),
 	})
 	if err != nil {
 		return err
@@ -90,7 +89,7 @@ func (w *WAL) Replay() ([]Entry, error) {
 	var offset int64 = 0
 
 	for {
-		e := utils.ReadEntryWithPrefix(w.file, offset)
+		e := shared.ReadEntryWithPrefix(w.file, offset)
 		if e.Err != nil {
 			if e.Err == io.EOF || e.NewOffset == 0 {
 				break
@@ -101,7 +100,7 @@ func (w *WAL) Replay() ([]Entry, error) {
 		offset = e.NewOffset
 
 		entry := Entry{
-			Type:  common.EntryType(e.Type),
+			Type:  shared.EntryType(e.Type),
 			Key:   string(e.Key),
 			Value: string(e.Value),
 		}
