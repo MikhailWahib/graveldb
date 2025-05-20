@@ -125,3 +125,75 @@ func (r *SSTReader) Lookup(key []byte) ([]byte, error) {
 
 	return nil, fmt.Errorf("key not found")
 }
+
+// SSTableIterator provides sequential access to entries in an SSTable
+type SSTableIterator struct {
+	reader *SSTReader
+	pos    int
+	entry  *shared.StoredEntry
+	err    error
+}
+
+// NewIterator creates a new iterator that uses the index to iterate over data entries
+func (r *SSTReader) NewIterator() *SSTableIterator {
+	return &SSTableIterator{
+		reader: r,
+		pos:    0,
+	}
+}
+
+// Next advances the iterator to the next entry using the index
+func (it *SSTableIterator) Next() bool {
+	if it.err != nil {
+		return false
+	}
+	if it.pos >= len(it.reader.index) {
+		return false
+	}
+	offset := it.reader.index[it.pos].Offset
+	entry, err := shared.ReadEntry(it.reader.file, offset)
+	if err != nil {
+		it.err = err
+		return false
+	}
+	it.entry = &entry
+	it.pos++
+	return true
+}
+
+// Key returns the current entry's key
+func (it *SSTableIterator) Key() []byte {
+	if it.entry == nil {
+		return nil
+	}
+	return it.entry.Key
+}
+
+// Value returns the current entry's value
+func (it *SSTableIterator) Value() []byte {
+	if it.entry == nil {
+		return nil
+	}
+	// For delete entries, return nil value
+	if it.entry.Type == shared.DeleteEntry {
+		return nil
+	}
+	return it.entry.Value
+}
+
+// Type returns the current entry's type
+func (it *SSTableIterator) Type() shared.EntryType {
+	if it.entry == nil {
+		return 0
+	}
+	return it.entry.Type
+}
+
+// Error returns any error encountered during iteration
+func (it *SSTableIterator) Error() error {
+	return it.err
+}
+
+func (r *SSTReader) IndexBase() int64 {
+	return r.indexBase
+}

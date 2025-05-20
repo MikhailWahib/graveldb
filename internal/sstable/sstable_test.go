@@ -9,6 +9,7 @@ import (
 
 	"github.com/MikhailWahib/graveldb/internal/diskmanager"
 	"github.com/MikhailWahib/graveldb/internal/diskmanager/mockdm"
+	"github.com/MikhailWahib/graveldb/internal/shared"
 	"github.com/MikhailWahib/graveldb/internal/sstable"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -256,6 +257,92 @@ func TestNonExistentKeyLookup(t *testing.T) {
 		_, err := reader.Lookup([]byte(key))
 		assert.Error(t, err, "Expected error for out-of-range key %s, got nil", key)
 	}
+
+	reader.Close()
+}
+
+func TestSSTableIterator(t *testing.T) {
+	tempDir, dm := setup(t)
+	defer os.RemoveAll(tempDir)
+
+	sstPath := filepath.Join(tempDir, "test_iterator.sst")
+
+	// Create the SSTable with some entries
+	writer := sstable.NewSSTWriter(dm)
+	err := writer.Open(sstPath)
+	require.NoError(t, err)
+
+	// Define test cases
+	testCases := []struct {
+		key   []byte
+		value []byte
+		typ   shared.EntryType
+	}{
+		{[]byte("a"), []byte("apple"), shared.PutEntry},
+		{[]byte("b"), nil, shared.DeleteEntry},
+		{[]byte("c"), []byte("cherry"), shared.PutEntry},
+		{[]byte("d"), []byte("date"), shared.PutEntry},
+		{[]byte("e"), nil, shared.DeleteEntry},
+	}
+
+	// Write entries
+	for _, tc := range testCases {
+		if tc.typ == shared.PutEntry {
+			writer.AppendPut(tc.key, tc.value)
+		} else {
+			writer.AppendDelete(tc.key)
+		}
+	}
+
+	err = writer.Finish()
+	require.NoError(t, err)
+
+	// Read the SSTable
+	reader := sstable.NewSSTReader(dm)
+	err = reader.Open(sstPath)
+	require.NoError(t, err)
+
+	// Test iteration
+	iter := reader.NewIterator()
+
+	// Check each entry
+	for i, tc := range testCases {
+		require.True(t, iter.Next(), "Expected entry %d to exist", i)
+		assert.Equal(t, tc.key, iter.Key(), "Key mismatch at entry %d", i)
+		assert.Equal(t, tc.value, iter.Value(), "Value mismatch at entry %d", i)
+		assert.Equal(t, tc.typ, iter.Type(), "Type mismatch at entry %d", i)
+	}
+
+	// No more entries
+	require.False(t, iter.Next())
+	assert.NoError(t, iter.Error())
+
+	reader.Close()
+}
+
+func TestSSTableEmptyIterator(t *testing.T) {
+	tempDir, dm := setup(t)
+	defer os.RemoveAll(tempDir)
+
+	sstPath := filepath.Join(tempDir, "test_empty_iterator.sst")
+
+	// Create an empty SSTable
+	writer := sstable.NewSSTWriter(dm)
+	err := writer.Open(sstPath)
+	require.NoError(t, err)
+
+	err = writer.Finish()
+	require.NoError(t, err)
+
+	// Read the SSTable
+	reader := sstable.NewSSTReader(dm)
+	err = reader.Open(sstPath)
+	require.NoError(t, err)
+
+	// Test iteration on empty SSTable
+	iter := reader.NewIterator()
+	require.False(t, iter.Next())
+	assert.NoError(t, iter.Error())
 
 	reader.Close()
 }
