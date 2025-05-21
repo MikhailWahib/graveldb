@@ -10,28 +10,28 @@ import (
 	"github.com/MikhailWahib/graveldb/internal/shared"
 )
 
-const (
-	IndexOffsetSize = 8
-	IndexSizeSize   = 8
-	FooterSize      = IndexOffsetSize + IndexSizeSize
-)
-
-type SSTReader struct {
+// sstReader provides functionality to read from an SSTable
+// This is an internal implementation detail, not exported
+type sstReader struct {
 	dm        diskmanager.DiskManager
 	file      diskmanager.FileHandle
 	index     []IndexEntry
 	indexBase int64
 }
 
-func NewSSTReader(dm diskmanager.DiskManager) *SSTReader {
-	return &SSTReader{dm: dm}
+// newSSTReader creates a new SSTable reader
+// This is an internal function, not exported
+func newSSTReader(dm diskmanager.DiskManager) *sstReader {
+	return &sstReader{dm: dm}
 }
 
-func (r *SSTReader) Open(filename string) error {
+// Open opens an existing SSTable file for reading
+func (r *sstReader) Open(filename string) error {
 	file, err := r.dm.Open(filename, os.O_RDONLY, 0)
 	if err != nil {
 		return fmt.Errorf("failed to open SST file: %w", err)
 	}
+
 	r.file = file
 
 	// Load footer
@@ -72,9 +72,9 @@ func (r *SSTReader) Open(filename string) error {
 		if err != nil {
 			return fmt.Errorf("failed to read index offset: %w", err)
 		}
+
 		dataOffset := int64(binary.BigEndian.Uint64(offsetBuf))
 		index = append(index, IndexEntry{Key: entry.Key, Offset: dataOffset})
-
 		offset = entry.NewOffset + 8
 	}
 
@@ -82,19 +82,20 @@ func (r *SSTReader) Open(filename string) error {
 	return nil
 }
 
-func (r *SSTReader) Close() error {
+// Close closes the SSTable file
+func (r *sstReader) Close() error {
 	return r.file.Close()
 }
 
-// Lookup performs a binary search over the sparse index and returns the entry if found.
-func (r *SSTReader) Lookup(key []byte) ([]byte, error) {
+// Lookup performs a binary search over the sparse index and returns the entry if found
+func (r *sstReader) Lookup(key []byte) ([]byte, error) {
 	pos := sort.Search(len(r.index), func(i int) bool {
 		return shared.CompareKeys(r.index[i].Key, key) >= 0
 	})
 
 	if pos == len(r.index) {
 		// Key is beyond last indexed key — not found
-		return nil, fmt.Errorf("key not found")
+		return nil, fmt.Errorf("key not found: %s", key)
 	}
 
 	// Linear scan from found position
@@ -102,16 +103,15 @@ func (r *SSTReader) Lookup(key []byte) ([]byte, error) {
 	for {
 		entry, err := shared.ReadEntry(r.file, offset)
 		if err != nil {
-			return nil, fmt.Errorf("failed to read index entry: %w", err)
+			return nil, fmt.Errorf("failed to read entry: %w", err)
 		}
 
 		cmp := shared.CompareKeys(entry.Key, key)
 		if cmp == 0 {
-			// Key found, with a tombstone check, return nil (not found)
+			// Key found, with a tombstone check
 			if shared.EntryType(entry.Type) == shared.DeleteEntry {
-				return nil, fmt.Errorf("key not found")
+				return nil, fmt.Errorf("key marked as deleted: %s", key)
 			}
-
 			// Key found, return the value
 			return entry.Value, nil
 		}
@@ -123,27 +123,27 @@ func (r *SSTReader) Lookup(key []byte) ([]byte, error) {
 		offset = entry.NewOffset
 	}
 
-	return nil, fmt.Errorf("key not found")
+	return nil, fmt.Errorf("key not found: %s", key)
 }
 
 // SSTableIterator provides sequential access to entries in an SSTable
-type SSTableIterator struct {
-	reader *SSTReader
+type sstIterator struct {
+	reader *sstReader
 	pos    int
 	entry  *shared.StoredEntry
 	err    error
 }
 
 // NewIterator creates a new iterator that uses the index to iterate over data entries
-func (r *SSTReader) NewIterator() *SSTableIterator {
-	return &SSTableIterator{
+func (r *sstReader) newIterator() *sstIterator {
+	return &sstIterator{
 		reader: r,
 		pos:    0,
 	}
 }
 
 // Next advances the iterator to the next entry using the index
-func (it *SSTableIterator) Next() bool {
+func (it *sstIterator) Next() bool {
 	if it.err != nil {
 		return false
 	}
@@ -162,7 +162,7 @@ func (it *SSTableIterator) Next() bool {
 }
 
 // Key returns the current entry's key
-func (it *SSTableIterator) Key() []byte {
+func (it *sstIterator) Key() []byte {
 	if it.entry == nil {
 		return nil
 	}
@@ -170,7 +170,7 @@ func (it *SSTableIterator) Key() []byte {
 }
 
 // Value returns the current entry's value
-func (it *SSTableIterator) Value() []byte {
+func (it *sstIterator) Value() []byte {
 	if it.entry == nil {
 		return nil
 	}
@@ -182,7 +182,7 @@ func (it *SSTableIterator) Value() []byte {
 }
 
 // Type returns the current entry's type
-func (it *SSTableIterator) Type() shared.EntryType {
+func (it *sstIterator) Type() shared.EntryType {
 	if it.entry == nil {
 		return 0
 	}
@@ -190,10 +190,6 @@ func (it *SSTableIterator) Type() shared.EntryType {
 }
 
 // Error returns any error encountered during iteration
-func (it *SSTableIterator) Error() error {
+func (it *sstIterator) Error() error {
 	return it.err
-}
-
-func (r *SSTReader) IndexBase() int64 {
-	return r.indexBase
 }

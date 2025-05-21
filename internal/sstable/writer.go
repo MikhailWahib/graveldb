@@ -9,7 +9,8 @@ import (
 	"github.com/MikhailWahib/graveldb/internal/shared"
 )
 
-type SSTWriter struct {
+// sstWriter provides functionality to write to an SSTable
+type sstWriter struct {
 	dm        diskmanager.DiskManager
 	file      diskmanager.FileHandle
 	index     []IndexEntry
@@ -17,19 +18,9 @@ type SSTWriter struct {
 	indexSize int64
 }
 
-type Entry struct {
-	Type  shared.EntryType
-	Key   []byte
-	Value []byte
-}
-
-type IndexEntry struct {
-	Key    []byte
-	Offset int64
-}
-
-func NewSSTWriter(dm diskmanager.DiskManager) *SSTWriter {
-	return &SSTWriter{
+// newSSTWriter creates a new SSTable writer
+func newSSTWriter(dm diskmanager.DiskManager) *sstWriter {
+	return &sstWriter{
 		dm:     dm,
 		index:  make([]IndexEntry, 0),
 		offset: 0,
@@ -37,16 +28,18 @@ func NewSSTWriter(dm diskmanager.DiskManager) *SSTWriter {
 }
 
 // Open prepares the writer for a new SSTable file
-func (w *SSTWriter) Open(filename string) error {
+func (w *sstWriter) Open(filename string) error {
 	file, err := w.dm.Open(filename, os.O_RDWR|os.O_CREATE, 0644)
 	if err != nil {
 		return err
 	}
+
 	w.file = file
 	return nil
 }
 
-func (w *SSTWriter) AppendPut(key, value []byte) error {
+// AppendPut writes a key-value pair to the SSTable
+func (w *sstWriter) AppendPut(key, value []byte) error {
 	return w.writeEntry(Entry{
 		Type:  shared.PutEntry,
 		Key:   key,
@@ -54,7 +47,8 @@ func (w *SSTWriter) AppendPut(key, value []byte) error {
 	})
 }
 
-func (w *SSTWriter) AppendDelete(key []byte) error {
+// AppendDelete writes a deletion marker for a key to the SSTable
+func (w *sstWriter) AppendDelete(key []byte) error {
 	return w.writeEntry(Entry{
 		Type:  shared.DeleteEntry,
 		Key:   key,
@@ -62,35 +56,34 @@ func (w *SSTWriter) AppendDelete(key []byte) error {
 	})
 }
 
-// WriteEntry writes a key-value pair to the data section
-func (w *SSTWriter) writeEntry(e Entry) error {
+// writeEntry writes a key-value pair to the data section
+func (w *sstWriter) writeEntry(e Entry) error {
 	entryOffset := w.offset
 
-	// Write the entry prefixed with type byte and k,v lengths.
+	// Write the entry prefixed with type byte and k,v lengths
 	n, err := shared.WriteEntry(shared.Entry{
 		File:   w.file,
 		Offset: w.offset,
-		Type:   shared.EntryType(e.Type),
+		Type:   e.Type,
 		Key:    e.Key,
 		Value:  e.Value,
 	})
 	if err != nil {
 		return err
 	}
+
 	w.offset += n
-
 	w.index = append(w.index, IndexEntry{Key: e.Key, Offset: entryOffset})
-
 	return nil
 }
 
-// WriteIndex writes the sparse index for faster lookups
-func (w *SSTWriter) WriteIndex(index []IndexEntry) error {
+// writeIndex writes the sparse index for faster lookups
+func (w *sstWriter) writeIndex() error {
 	indexStartOffset := w.offset
 
-	for _, entry := range index {
+	for _, entry := range w.index {
 		// Write key with prefix
-		n, err := shared.WriteEntry(shared.Entry{
+		newOffset, err := shared.WriteEntry(shared.Entry{
 			File:   w.file,
 			Offset: w.offset,
 			Type:   shared.PutEntry,
@@ -100,16 +93,18 @@ func (w *SSTWriter) WriteIndex(index []IndexEntry) error {
 		if err != nil {
 			return err
 		}
-		w.offset = n
+
+		w.offset = newOffset
 
 		// Write offset
 		offsetBytes := make([]byte, 8)
 		binary.BigEndian.PutUint64(offsetBytes, uint64(entry.Offset))
-		written, err := w.file.WriteAt(offsetBytes, w.offset)
+		_, err = w.file.WriteAt(offsetBytes, w.offset)
 		if err != nil {
 			return err
 		}
-		w.offset += int64(written)
+
+		w.offset += 8
 	}
 
 	// Calculate actual index size
@@ -118,10 +113,10 @@ func (w *SSTWriter) WriteIndex(index []IndexEntry) error {
 }
 
 // Finish finalizes the SSTable and closes the file
-func (w *SSTWriter) Finish() error {
+func (w *sstWriter) Finish() error {
 	// Write the index section to the file
 	indexOffset := w.offset // The current offset will be the start of the index section
-	if err := w.WriteIndex(w.index); err != nil {
+	if err := w.writeIndex(); err != nil {
 		return fmt.Errorf("failed to write index: %w", err)
 	}
 
@@ -129,11 +124,9 @@ func (w *SSTWriter) Finish() error {
 	// The footer contains:
 	// - The offset of the index section
 	// - The size of the index section
-
-	// Footer data (index offset and index size)
-	footer := make([]byte, 16)
-	binary.BigEndian.PutUint64(footer[:8], uint64(indexOffset))
-	binary.BigEndian.PutUint64(footer[8:], uint64(w.indexSize))
+	footer := make([]byte, FooterSize)
+	binary.BigEndian.PutUint64(footer[:IndexOffsetSize], uint64(indexOffset))
+	binary.BigEndian.PutUint64(footer[IndexOffsetSize:], uint64(w.indexSize))
 
 	// Write the footer to the file
 	_, err := w.file.WriteAt(footer, w.offset)
@@ -141,14 +134,15 @@ func (w *SSTWriter) Finish() error {
 		return fmt.Errorf("failed to write footer: %w", err)
 	}
 
-	// Update the offset for the footer (move past it)
-	w.offset += int64(len(footer))
+	// Update the offset for the footer
+	w.offset += FooterSize
 
-	// sync the file to make sure everything is written to disk
+	// Sync the file to make sure everything is written to disk
 	if err := w.file.Sync(); err != nil {
 		return fmt.Errorf("failed to sync file: %w", err)
 	}
 
+	// Close the file
 	if err := w.file.Close(); err != nil {
 		return fmt.Errorf("failed to close file: %w", err)
 	}

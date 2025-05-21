@@ -39,37 +39,37 @@ func TestSSTableWriteRead(t *testing.T) {
 
 	// Create the SSTable
 	sstPath := filepath.Join(tempDir, "test.sst")
-	writer := sstable.NewSSTWriter(dm)
-	err := writer.Open(sstPath)
+	sst := sstable.NewSSTable(dm)
+	err := sst.OpenForWrite(sstPath)
 	require.NoError(t, err)
 
 	// Write entries
 	for _, data := range testData {
-		err = writer.AppendPut([]byte(data.key), []byte(data.value))
+		err = sst.AppendPut([]byte(data.key), []byte(data.value))
 		require.NoError(t, err)
 	}
 
 	// Finish writing
-	err = writer.Finish()
+	err = sst.Finish()
 	require.NoError(t, err)
 
 	// Read the SSTable
-	reader := sstable.NewSSTReader(dm)
-	err = reader.Open(sstPath)
+	sst = sstable.NewSSTable(dm)
+	err = sst.OpenForRead(sstPath)
 	require.NoError(t, err)
 
 	// Test lookup for each key
 	for _, data := range testData {
-		value, err := reader.Lookup([]byte(data.key))
+		value, err := sst.Lookup([]byte(data.key))
 		assert.NoError(t, err)
 		assert.True(t, bytes.Equal(value, []byte(data.value)), "Value mismatch for %s: got %s, want %s", data.key, string(value), data.value)
 	}
 
 	// Test lookup for non-existent key
-	_, err = reader.Lookup([]byte("nonexistent"))
+	_, err = sst.Lookup([]byte("nonexistent"))
 	assert.Error(t, err)
 
-	reader.Close()
+	sst.Close()
 }
 
 func TestSSTableEmptyValue(t *testing.T) {
@@ -79,28 +79,27 @@ func TestSSTableEmptyValue(t *testing.T) {
 	sstPath := filepath.Join(tempDir, "empty_value.sst")
 
 	// Create SSTable with empty values
-	writer := sstable.NewSSTWriter(dm)
-	err := writer.Open(sstPath)
+	sst := sstable.NewSSTable(dm)
+	err := sst.OpenForWrite(sstPath)
 	require.NoError(t, err)
 
-	err = writer.AppendPut([]byte("key1"), []byte(""))
-
+	err = sst.AppendPut([]byte("key1"), []byte(""))
 	require.NoError(t, err)
 
-	err = writer.Finish()
+	err = sst.Finish()
 	require.NoError(t, err)
 
 	// Read the SSTable
-	reader := sstable.NewSSTReader(dm)
-	err = reader.Open(sstPath)
+	sst = sstable.NewSSTable(dm)
+	err = sst.OpenForRead(sstPath)
 	require.NoError(t, err)
 
-	value, err := reader.Lookup([]byte("key1"))
+	value, err := sst.Lookup([]byte("key1"))
 	require.NoError(t, err)
 
 	assert.Empty(t, value)
 
-	reader.Close()
+	sst.Close()
 }
 
 func TestSSTableLargeKeyValues(t *testing.T) {
@@ -110,8 +109,8 @@ func TestSSTableLargeKeyValues(t *testing.T) {
 	sstPath := filepath.Join(tempDir, "large_data.sst")
 
 	// Create SSTable with large values
-	writer := sstable.NewSSTWriter(dm)
-	err := writer.Open(sstPath)
+	sst := sstable.NewSSTable(dm)
+	err := sst.OpenForWrite(sstPath)
 	require.NoError(t, err)
 
 	// Create a 100KB value
@@ -126,35 +125,34 @@ func TestSSTableLargeKeyValues(t *testing.T) {
 		largeKey[i] = byte((i * 7) % 256)
 	}
 
-	err = writer.AppendPut(largeKey, largeValue)
+	err = sst.AppendPut(largeKey, largeValue)
 	require.NoError(t, err)
 
 	// Add a normal key after the large one
-	err = writer.AppendPut([]byte("small-key"), []byte("small-value"))
-
+	err = sst.AppendPut([]byte("small-key"), []byte("small-value"))
 	require.NoError(t, err)
 
-	err = writer.Finish()
+	err = sst.Finish()
 	require.NoError(t, err)
 
 	// Read the SSTable
-	reader := sstable.NewSSTReader(dm)
-	err = reader.Open(sstPath)
+	sst = sstable.NewSSTable(dm)
+	err = sst.OpenForRead(sstPath)
 	require.NoError(t, err)
 
 	// Check the large key/value
-	value, err := reader.Lookup(largeKey)
+	value, err := sst.Lookup(largeKey)
 	require.NoError(t, err)
 
 	assert.True(t, bytes.Equal(value, largeValue), "Large value mismatch: lengths got %d, want %d", len(value), len(largeValue))
 
 	// Check we can still find the small key
-	smallValue, err := reader.Lookup([]byte("small-key"))
+	smallValue, err := sst.Lookup([]byte("small-key"))
 	require.NoError(t, err)
 
 	assert.Equal(t, "small-value", string(smallValue))
 
-	reader.Close()
+	sst.Close()
 }
 
 func BenchmarkSSTableWriting(b *testing.B) {
@@ -166,22 +164,22 @@ func BenchmarkSSTableWriting(b *testing.B) {
 	for b.Loop() {
 		b.StopTimer()
 		sstPath := filepath.Join(tempDir, "bench_write.sst")
-		writer := sstable.NewSSTWriter(dm)
-		writer.Open(sstPath)
+		sst := sstable.NewSSTable(dm)
+		sst.OpenForWrite(sstPath)
 		b.StartTimer()
 
 		// Write 1000 entries
 		for j := range 1000 {
 			key := fmt.Appendf(nil, "key-%d", j)
 			value := fmt.Appendf(nil, "value-%d", j)
-			err := writer.AppendPut(key, value)
+			err := sst.AppendPut(key, value)
 
 			if err != nil {
 				b.Fatalf("Failed to write entry: %v", err)
 			}
 		}
 
-		writer.Finish()
+		sst.Finish()
 	}
 }
 
@@ -193,26 +191,26 @@ func BenchmarkSSTableReading(b *testing.B) {
 	sstPath := filepath.Join(tempDir, "bench_read.sst")
 
 	// Create a benchmark SSTable first
-	writer := sstable.NewSSTWriter(dm)
-	writer.Open(sstPath)
+	sst := sstable.NewSSTable(dm)
+	sst.OpenForWrite(sstPath)
 
 	// Write 1000 entries
 	for j := range 1000 {
 		key := fmt.Appendf(nil, "key-%d", j)
 		value := fmt.Appendf(nil, "value-%d", j)
-		writer.AppendPut(key, value)
+		sst.AppendPut(key, value)
 	}
-	writer.Finish()
+	sst.Finish()
 
 	// Now benchmark lookups
-	reader := sstable.NewSSTReader(dm)
-	reader.Open(sstPath)
+	sst = sstable.NewSSTable(dm)
+	sst.OpenForRead(sstPath)
 
 	for i := 0; b.Loop(); i++ {
 		// Look up a random key
 		keyNum := i % 1000
 		key := fmt.Appendf(nil, "key-%d", keyNum)
-		value, err := reader.Lookup(key)
+		value, err := sst.Lookup(key)
 		if err != nil {
 			b.Fatalf("Failed to lookup key: %v", err)
 		}
@@ -231,36 +229,35 @@ func TestNonExistentKeyLookup(t *testing.T) {
 	sstPath := filepath.Join(tempDir, "test_missing.sst")
 
 	// Create the SSTable with some entries
-	writer := sstable.NewSSTWriter(dm)
-	writer.Open(sstPath)
+	sst := sstable.NewSSTable(dm)
+	sst.OpenForWrite(sstPath)
 
-	writer.AppendPut([]byte("a"), []byte("apple"))
-	writer.AppendPut([]byte("c"), []byte("cherry"))
-	writer.AppendPut([]byte("e"), []byte("eheee"))
+	sst.AppendPut([]byte("a"), []byte("apple"))
+	sst.AppendPut([]byte("c"), []byte("cherry"))
+	sst.AppendPut([]byte("e"), []byte("eheee"))
 
-	writer.Finish()
+	sst.Finish()
 
 	// Read the SSTable
-	reader := sstable.NewSSTReader(dm)
-	reader.Open(sstPath)
+	sst = sstable.NewSSTable(dm)
+	sst.OpenForRead(sstPath)
 
 	// Test lookup for keys that don't exist but are within range
 	testMissingKeys := []string{"b", "d", "f"}
 	for _, key := range testMissingKeys {
-		_, err := reader.Lookup([]byte(key))
+		_, err := sst.Lookup([]byte(key))
 		assert.Error(t, err, "Expected error for missing key %s, got nil", key)
 	}
 
 	// Test keys that are completely out of range
 	outOfRangeKeys := []string{"0", "z"}
 	for _, key := range outOfRangeKeys {
-		_, err := reader.Lookup([]byte(key))
+		_, err := sst.Lookup([]byte(key))
 		assert.Error(t, err, "Expected error for out-of-range key %s, got nil", key)
 	}
 
-	reader.Close()
+	sst.Close()
 }
-
 func TestSSTableIterator(t *testing.T) {
 	tempDir, dm := setup(t)
 	defer os.RemoveAll(tempDir)
@@ -268,8 +265,8 @@ func TestSSTableIterator(t *testing.T) {
 	sstPath := filepath.Join(tempDir, "test_iterator.sst")
 
 	// Create the SSTable with some entries
-	writer := sstable.NewSSTWriter(dm)
-	err := writer.Open(sstPath)
+	sst := sstable.NewSSTable(dm)
+	err := sst.OpenForWrite(sstPath)
 	require.NoError(t, err)
 
 	// Define test cases
@@ -288,22 +285,23 @@ func TestSSTableIterator(t *testing.T) {
 	// Write entries
 	for _, tc := range testCases {
 		if tc.typ == shared.PutEntry {
-			writer.AppendPut(tc.key, tc.value)
+			sst.AppendPut(tc.key, tc.value)
 		} else {
-			writer.AppendDelete(tc.key)
+			sst.AppendDelete(tc.key)
 		}
 	}
 
-	err = writer.Finish()
+	err = sst.Finish()
 	require.NoError(t, err)
 
 	// Read the SSTable
-	reader := sstable.NewSSTReader(dm)
-	err = reader.Open(sstPath)
+	err = sst.OpenForRead(sstPath)
 	require.NoError(t, err)
 
 	// Test iteration
-	iter := reader.NewIterator()
+	iter, err := sst.NewIterator()
+	require.NoError(t, err)
+	require.NotNil(t, iter)
 
 	// Check each entry
 	for i, tc := range testCases {
@@ -317,7 +315,7 @@ func TestSSTableIterator(t *testing.T) {
 	require.False(t, iter.Next())
 	assert.NoError(t, iter.Error())
 
-	reader.Close()
+	sst.Close()
 }
 
 func TestSSTableEmptyIterator(t *testing.T) {
@@ -327,22 +325,25 @@ func TestSSTableEmptyIterator(t *testing.T) {
 	sstPath := filepath.Join(tempDir, "test_empty_iterator.sst")
 
 	// Create an empty SSTable
-	writer := sstable.NewSSTWriter(dm)
-	err := writer.Open(sstPath)
+	sst := sstable.NewSSTable(dm)
+	err := sst.OpenForWrite(sstPath)
 	require.NoError(t, err)
 
-	err = writer.Finish()
+	err = sst.Finish()
 	require.NoError(t, err)
 
 	// Read the SSTable
-	reader := sstable.NewSSTReader(dm)
-	err = reader.Open(sstPath)
+	err = sst.OpenForRead(sstPath)
 	require.NoError(t, err)
 
 	// Test iteration on empty SSTable
-	iter := reader.NewIterator()
+	iter, err := sst.NewIterator()
+	require.NoError(t, err)
+	require.NotNil(t, iter)
+
+	// No entries should be present
 	require.False(t, iter.Next())
 	assert.NoError(t, iter.Error())
 
-	reader.Close()
+	sst.Close()
 }
