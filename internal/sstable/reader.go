@@ -10,8 +10,6 @@ import (
 	"github.com/MikhailWahib/graveldb/internal/shared"
 )
 
-// sstReader provides functionality to read from an SSTable
-// This is an internal implementation detail, not exported
 type sstReader struct {
 	dm        diskmanager.DiskManager
 	file      diskmanager.FileHandle
@@ -19,8 +17,6 @@ type sstReader struct {
 	indexBase int64
 }
 
-// newSSTReader creates a new SSTable reader
-// This is an internal function, not exported
 func newSSTReader(dm diskmanager.DiskManager) *sstReader {
 	return &sstReader{dm: dm}
 }
