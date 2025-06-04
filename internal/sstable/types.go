@@ -2,10 +2,14 @@ package sstable
 
 import "github.com/MikhailWahib/graveldb/internal/shared"
 
+// File format constants for SSTable
 const (
+	// IndexOffsetSize is the size in bytes of the index offset field
 	IndexOffsetSize = 8
-	IndexSizeSize   = 8
-	FooterSize      = IndexOffsetSize + IndexSizeSize
+	// IndexSizeSize is the size in bytes of the index size field
+	IndexSizeSize = 8
+	// FooterSize is the total size of the SSTable footer
+	FooterSize = IndexOffsetSize + IndexSizeSize
 )
 
 // Entry represents a key-value entry in the SSTable

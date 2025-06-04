@@ -1,3 +1,5 @@
+// Package diskmanager provides interfaces and implementations for managing disk-based file operations.
+// It handles file reading, writing, and other disk-related operations required by the database.
 package diskmanager
 
 import (

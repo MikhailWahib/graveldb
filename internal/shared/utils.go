@@ -7,6 +7,7 @@ import (
 	"github.com/MikhailWahib/graveldb/internal/diskmanager"
 )
 
+// Entry represents a database entry to be written to storage
 type Entry struct {
 	File   diskmanager.FileHandle
 	Offset int64
@@ -15,7 +16,7 @@ type Entry struct {
 	Value  []byte
 }
 
-// WriteEntryWithPrefix writes a key-value or key-only entry to the file using a length-prefixed format.
+// WriteEntry writes a key-value or key-only entry to the file using a length-prefixed format.
 // Format: [1 byte EntryType][4 bytes KeyLen][4 bytes ValueLen][Key][Value]
 // If value is nil or empty, only the key is written with ValueLen set to 0.
 func WriteEntry(e Entry) (int64, error) {
@@ -40,6 +41,7 @@ func WriteEntry(e Entry) (int64, error) {
 	return e.Offset + int64(n), nil
 }
 
+// StoredEntry represents an entry read from storage
 type StoredEntry struct {
 	Type      EntryType
 	Key       []byte
@@ -47,7 +49,7 @@ type StoredEntry struct {
 	NewOffset int64
 }
 
-// ReadEntryWithPrefix reads a key-value entry from the file with a length-prefixed format.
+// ReadEntry reads a key-value entry from the file with a length-prefixed format.
 // Format: [1 byte EntryType][4 bytes KeyLen][4 bytes ValueLen][Key][Value]
 func ReadEntry(f diskmanager.FileHandle, offset int64) (StoredEntry, error) {
 	// read the length of the EntryType key and value
@@ -90,11 +92,8 @@ func ReadEntry(f diskmanager.FileHandle, offset int64) (StoredEntry, error) {
 
 // CompareKeys compares bytes lexicographically
 func CompareKeys(a, b []byte) int {
-	min := len(a)
-	if len(b) < min {
-		min = len(b)
-	}
-	for i := range min {
+	minLen := min(len(b), len(a))
+	for i := range minLen {
 		if a[i] < b[i] {
 			return -1
 		} else if a[i] > b[i] {

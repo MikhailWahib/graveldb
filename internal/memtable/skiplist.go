@@ -10,12 +10,16 @@ const (
 	probability = 0.5
 )
 
+// SkipListNode represents a node in the skip list data structure,
+// containing the key-value pair and links to other nodes
 type SkipListNode struct {
 	key   string
 	value string
 	next  []*SkipListNode
 }
 
+// SkipList is a probabilistic data structure that allows for
+// efficient search, insertion, and deletion operations
 type SkipList struct {
 	head     *SkipListNode
 	level    int

@@ -1,7 +1,11 @@
+// Package shared provides common types and utilities used across the database implementation.
 package shared
 
-const (
-	EntryTypeSize = 1
-	LengthSize    = 4
-	PrefixSize    = EntryTypeSize + (2 * LengthSize) // 9 bytes
-)
+// EntryTypeSize is the size in bytes used to store an entry type marker
+const EntryTypeSize = 1
+
+// LengthSize is the size in bytes used to store length prefixes
+const LengthSize = 4
+
+// PrefixSize is the total size of entry metadata (type + key length + value length)
+const PrefixSize = EntryTypeSize + (2 * LengthSize) // 9 bytes

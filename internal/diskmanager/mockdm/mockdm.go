@@ -1,3 +1,4 @@
+// Package mockdm provides a mock implementation of the disk manager for testing
 package mockdm
 
 import (
@@ -9,11 +10,13 @@ import (
 	"github.com/MikhailWahib/graveldb/internal/diskmanager"
 )
 
+// MockFile implements diskmanager.FileHandle for testing purposes
 type MockFile struct {
 	data []byte
 	name string
 }
 
+// WriteAt writes len(b) bytes to the file starting at byte offset off
 func (m *MockFile) WriteAt(b []byte, off int64) (int, error) {
 	// Extend the slice if needed
 	requiredLen := int(off) + len(b)
@@ -25,6 +28,7 @@ func (m *MockFile) WriteAt(b []byte, off int64) (int, error) {
 	return copy(m.data[off:], b), nil
 }
 
+// ReadAt reads len(b) bytes from the file starting at byte offset off
 func (m *MockFile) ReadAt(b []byte, off int64) (int, error) {
 	if off >= int64(len(m.data)) {
 		return 0, io.EOF
@@ -36,14 +40,17 @@ func (m *MockFile) ReadAt(b []byte, off int64) (int, error) {
 	return n, nil
 }
 
+// Close closes the mock file
 func (m *MockFile) Close() error {
 	return nil
 }
 
+// Sync simulates syncing file contents to disk
 func (m *MockFile) Sync() error {
 	return nil
 }
 
+// Stat returns file information
 func (m *MockFile) Stat() (os.FileInfo, error) {
 	return &testFileInfo{size: int64(len(m.data)), name: m.name}, nil
 }
@@ -65,13 +72,15 @@ type MockDiskManager struct {
 	files map[string]*MockFile
 }
 
+// NewMockDiskManager creates a new MockDiskManager instance
 func NewMockDiskManager() *MockDiskManager {
 	return &MockDiskManager{
 		files: make(map[string]*MockFile),
 	}
 }
 
-func (dm *MockDiskManager) Open(path string, flag int, perm os.FileMode) (diskmanager.FileHandle, error) {
+// Open creates or opens a mock file
+func (dm *MockDiskManager) Open(path string, _ int, _ os.FileMode) (diskmanager.FileHandle, error) {
 	if file, exists := dm.files[path]; exists {
 		return file, nil
 	}
@@ -84,12 +93,14 @@ func (dm *MockDiskManager) Open(path string, flag int, perm os.FileMode) (diskma
 	return file, nil
 }
 
+// Delete removes a mock file
 func (dm *MockDiskManager) Delete(path string) error {
 	delete(dm.files, path)
 	return nil
 }
 
-func (dm *MockDiskManager) List(dir string, filter string) ([]string, error) {
+// List returns mock files matching the filter
+func (dm *MockDiskManager) List(_ string, filter string) ([]string, error) {
 	var files []string
 	for name := range dm.files {
 		if filter == "" || strings.Contains(name, filter) {
@@ -99,6 +110,7 @@ func (dm *MockDiskManager) List(dir string, filter string) ([]string, error) {
 	return files, nil
 }
 
-func (dm *MockDiskManager) Close(path string) error {
+// Close closes a mock file
+func (dm *MockDiskManager) Close(_ string) error {
 	return nil
 }

@@ -26,6 +26,11 @@ func setup(t *testing.T) (string, diskmanager.DiskManager) {
 
 func TestSSTableWriteRead(t *testing.T) {
 	tempDir, dm := setup(t)
+	defer func() {
+		if err := os.RemoveAll(tempDir); err != nil {
+			t.Errorf("failed to cleanup temp dir: %v", err)
+		}
+	}()
 
 	testData := []struct {
 		key   string
@@ -69,12 +74,16 @@ func TestSSTableWriteRead(t *testing.T) {
 	_, err = sst.Lookup([]byte("nonexistent"))
 	assert.Error(t, err)
 
-	sst.Close()
+	require.NoError(t, sst.Close())
 }
 
 func TestSSTableEmptyValue(t *testing.T) {
 	tempDir, dm := setup(t)
-	defer os.RemoveAll(tempDir)
+	defer func() {
+		if err := os.RemoveAll(tempDir); err != nil {
+			t.Errorf("failed to cleanup temp dir: %v", err)
+		}
+	}()
 
 	sstPath := filepath.Join(tempDir, "empty_value.sst")
 
@@ -99,12 +108,16 @@ func TestSSTableEmptyValue(t *testing.T) {
 
 	assert.Empty(t, value)
 
-	sst.Close()
+	require.NoError(t, sst.Close())
 }
 
 func TestSSTableLargeKeyValues(t *testing.T) {
 	tempDir, dm := setup(t)
-	defer os.RemoveAll(tempDir)
+	defer func() {
+		if err := os.RemoveAll(tempDir); err != nil {
+			t.Errorf("failed to cleanup temp dir: %v", err)
+		}
+	}()
 
 	sstPath := filepath.Join(tempDir, "large_data.sst")
 
@@ -152,12 +165,16 @@ func TestSSTableLargeKeyValues(t *testing.T) {
 
 	assert.Equal(t, "small-value", string(smallValue))
 
-	sst.Close()
+	require.NoError(t, sst.Close())
 }
 
 func BenchmarkSSTableWriting(b *testing.B) {
 	tempDir := filepath.Join(os.TempDir(), "sstable_bench_write")
-	defer os.RemoveAll(tempDir)
+	defer func() {
+		if err := os.RemoveAll(tempDir); err != nil {
+			b.Errorf("failed to cleanup temp dir: %v", err)
+		}
+	}()
 
 	dm := mockdm.NewMockDiskManager()
 
@@ -165,7 +182,10 @@ func BenchmarkSSTableWriting(b *testing.B) {
 		b.StopTimer()
 		sstPath := filepath.Join(tempDir, "bench_write.sst")
 		sst := sstable.NewSSTable(dm)
-		sst.OpenForWrite(sstPath)
+		err := sst.OpenForWrite(sstPath)
+		if err != nil {
+			b.Fatalf("Failed to open SSTable for write: %v", err)
+		}
 		b.StartTimer()
 
 		// Write 1000 entries
@@ -179,32 +199,51 @@ func BenchmarkSSTableWriting(b *testing.B) {
 			}
 		}
 
-		sst.Finish()
+		err = sst.Finish()
+		if err != nil {
+			b.Fatalf("Failed to finish SSTable: %v", err)
+		}
 	}
 }
 
 func BenchmarkSSTableReading(b *testing.B) {
 	tempDir := filepath.Join(os.TempDir(), "sstable_bench_read")
-	defer os.RemoveAll(tempDir)
+	defer func() {
+		if err := os.RemoveAll(tempDir); err != nil {
+			b.Errorf("failed to cleanup temp dir: %v", err)
+		}
+	}()
 
 	dm := mockdm.NewMockDiskManager()
 	sstPath := filepath.Join(tempDir, "bench_read.sst")
 
 	// Create a benchmark SSTable first
 	sst := sstable.NewSSTable(dm)
-	sst.OpenForWrite(sstPath)
+	err := sst.OpenForWrite(sstPath)
+	if err != nil {
+		b.Fatalf("Failed to open SSTable for write: %v", err)
+	}
 
 	// Write 1000 entries
 	for j := range 1000 {
 		key := fmt.Appendf(nil, "key-%d", j)
 		value := fmt.Appendf(nil, "value-%d", j)
-		sst.AppendPut(key, value)
+		err := sst.AppendPut(key, value)
+		if err != nil {
+			b.Fatalf("Failed to write entry: %v", err)
+		}
 	}
-	sst.Finish()
+	err = sst.Finish()
+	if err != nil {
+		b.Fatalf("Failed to finish SSTable: %v", err)
+	}
 
 	// Now benchmark lookups
 	sst = sstable.NewSSTable(dm)
-	sst.OpenForRead(sstPath)
+	err = sst.OpenForRead(sstPath)
+	if err != nil {
+		b.Fatalf("Failed to open SSTable for read: %v", err)
+	}
 
 	for i := 0; b.Loop(); i++ {
 		// Look up a random key
@@ -224,23 +263,33 @@ func BenchmarkSSTableReading(b *testing.B) {
 
 func TestNonExistentKeyLookup(t *testing.T) {
 	tempDir, dm := setup(t)
-	defer os.RemoveAll(tempDir)
+	defer func() {
+		if err := os.RemoveAll(tempDir); err != nil {
+			t.Errorf("failed to cleanup temp dir: %v", err)
+		}
+	}()
 
 	sstPath := filepath.Join(tempDir, "test_missing.sst")
 
 	// Create the SSTable with some entries
 	sst := sstable.NewSSTable(dm)
-	sst.OpenForWrite(sstPath)
+	err := sst.OpenForWrite(sstPath)
+	require.NoError(t, err)
 
-	sst.AppendPut([]byte("a"), []byte("apple"))
-	sst.AppendPut([]byte("c"), []byte("cherry"))
-	sst.AppendPut([]byte("e"), []byte("eheee"))
+	err = sst.AppendPut([]byte("a"), []byte("apple"))
+	require.NoError(t, err)
+	err = sst.AppendPut([]byte("c"), []byte("cherry"))
+	require.NoError(t, err)
+	err = sst.AppendPut([]byte("e"), []byte("eheee"))
+	require.NoError(t, err)
 
-	sst.Finish()
+	err = sst.Finish()
+	require.NoError(t, err)
 
 	// Read the SSTable
 	sst = sstable.NewSSTable(dm)
-	sst.OpenForRead(sstPath)
+	err = sst.OpenForRead(sstPath)
+	require.NoError(t, err)
 
 	// Test lookup for keys that don't exist but are within range
 	testMissingKeys := []string{"b", "d", "f"}
@@ -256,11 +305,16 @@ func TestNonExistentKeyLookup(t *testing.T) {
 		assert.Error(t, err, "Expected error for out-of-range key %s, got nil", key)
 	}
 
-	sst.Close()
+	require.NoError(t, sst.Close())
 }
+
 func TestSSTableIterator(t *testing.T) {
 	tempDir, dm := setup(t)
-	defer os.RemoveAll(tempDir)
+	defer func() {
+		if err := os.RemoveAll(tempDir); err != nil {
+			t.Errorf("failed to cleanup temp dir: %v", err)
+		}
+	}()
 
 	sstPath := filepath.Join(tempDir, "test_iterator.sst")
 
@@ -285,9 +339,11 @@ func TestSSTableIterator(t *testing.T) {
 	// Write entries
 	for _, tc := range testCases {
 		if tc.typ == shared.PutEntry {
-			sst.AppendPut(tc.key, tc.value)
+			err = sst.AppendPut(tc.key, tc.value)
+			require.NoError(t, err)
 		} else {
-			sst.AppendDelete(tc.key)
+			err = sst.AppendDelete(tc.key)
+			require.NoError(t, err)
 		}
 	}
 
@@ -315,12 +371,16 @@ func TestSSTableIterator(t *testing.T) {
 	require.False(t, iter.Next())
 	assert.NoError(t, iter.Error())
 
-	sst.Close()
+	require.NoError(t, sst.Close())
 }
 
 func TestSSTableEmptyIterator(t *testing.T) {
 	tempDir, dm := setup(t)
-	defer os.RemoveAll(tempDir)
+	defer func() {
+		if err := os.RemoveAll(tempDir); err != nil {
+			t.Errorf("failed to cleanup temp dir: %v", err)
+		}
+	}()
 
 	sstPath := filepath.Join(tempDir, "test_empty_iterator.sst")
 
@@ -345,5 +405,5 @@ func TestSSTableEmptyIterator(t *testing.T) {
 	require.False(t, iter.Next())
 	assert.NoError(t, iter.Error())
 
-	sst.Close()
+	require.NoError(t, sst.Close())
 }

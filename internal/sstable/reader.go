@@ -1,3 +1,5 @@
+// Package sstable implements sorted string tables for persistent storage
+// of key-value pairs on disk in a format optimized for reads.
 package sstable
 
 import (

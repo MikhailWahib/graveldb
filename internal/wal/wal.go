@@ -1,3 +1,4 @@
+// Package wal implements Write-Ahead Logging for durability
 package wal
 
 import (
@@ -8,12 +9,14 @@ import (
 	"github.com/MikhailWahib/graveldb/internal/shared"
 )
 
-type WALEntry struct {
+// Entry represents a single write-ahead log entry
+type Entry struct {
 	Type  shared.EntryType
 	Key   string
 	Value string
 }
 
+// WAL manages the write-ahead log file
 type WAL struct {
 	dm          diskmanager.DiskManager
 	path        string
@@ -44,7 +47,7 @@ func NewWAL(dm diskmanager.DiskManager, path string) (*WAL, error) {
 
 // AppendPut appends a put operation to the WAL
 func (w *WAL) AppendPut(key, value string) error {
-	return w.writeEntry(WALEntry{
+	return w.writeEntry(Entry{
 		Type:  shared.PutEntry,
 		Key:   key,
 		Value: value,
@@ -53,7 +56,7 @@ func (w *WAL) AppendPut(key, value string) error {
 
 // AppendDelete appends a delete operation to the WAL
 func (w *WAL) AppendDelete(key string) error {
-	return w.writeEntry(WALEntry{
+	return w.writeEntry(Entry{
 		Type:  shared.DeleteEntry,
 		Key:   key,
 		Value: "",
@@ -62,7 +65,7 @@ func (w *WAL) AppendDelete(key string) error {
 
 // writeEntry formats an entry and writes it using the file handle
 // Format: [1 byte Type][4 bytes KeyLen][4 bytes ValueLen][Key][Value]
-func (w *WAL) writeEntry(e WALEntry) error {
+func (w *WAL) writeEntry(e Entry) error {
 	// Write the entry type, key length, value length, key, and value.
 	// offset added by one because of the added byte above.
 	n, err := shared.WriteEntry(shared.Entry{
@@ -83,10 +86,10 @@ func (w *WAL) writeEntry(e WALEntry) error {
 	return w.Sync()
 }
 
-// Replay reads all WAL entries from the beginning of the file
-func (w *WAL) Replay() ([]WALEntry, error) {
-	var walEntries []WALEntry
-	var offset int64 = 0
+// Replay reads entries from the beginning, returning 0 offset at EOF
+func (w *WAL) Replay() ([]Entry, error) {
+	var offset int64
+	var walEntries []Entry
 
 	for {
 		entry, err := shared.ReadEntry(w.file, offset)
@@ -99,7 +102,7 @@ func (w *WAL) Replay() ([]WALEntry, error) {
 		}
 		offset = entry.NewOffset
 
-		walEntry := WALEntry{
+		walEntry := Entry{
 			Type:  shared.EntryType(entry.Type),
 			Key:   string(entry.Key),
 			Value: string(entry.Value),

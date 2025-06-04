@@ -253,7 +253,7 @@ func TestFileHandle_EdgeCases(t *testing.T) {
 	require.NoError(t, err, "Expected no error reading full data")
 
 	// First 10 bytes should be zeros
-	for i := 0; i < 10; i++ {
+	for i := range 10 {
 		require.Zero(t, fullData[i], "Expected byte %d to be 0", i)
 	}
 
