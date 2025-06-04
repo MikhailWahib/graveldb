@@ -182,7 +182,11 @@ func TestDiskManager_List(t *testing.T) {
 	err := os.MkdirAll(testDir, 0755)
 	require.NoError(t, err, "Failed to create test directory")
 
-	defer os.RemoveAll(testDir)
+	defer func() {
+		if err := os.RemoveAll(testDir); err != nil {
+			t.Errorf("failed to cleanup test directory: %v", err)
+		}
+	}()
 
 	// Create test files
 	testFiles := []string{

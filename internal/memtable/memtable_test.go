@@ -21,7 +21,10 @@ func setupTempDir(t *testing.T) string {
 
 func TestMemtable_PutAndGet(t *testing.T) {
 	dir := setupTempDir(t)
-	defer os.RemoveAll(dir)
+	defer func() {
+		err := os.RemoveAll(dir)
+		require.NoError(t, err, "failed to remove temp dir")
+	}()
 
 	dm := mockdm.NewMockDiskManager()
 	mt, err := memtable.NewMemtable(dm, filepath.Join(dir, "wal.log"))
@@ -37,7 +40,10 @@ func TestMemtable_PutAndGet(t *testing.T) {
 
 func TestMemtable_Delete(t *testing.T) {
 	dir := setupTempDir(t)
-	defer os.RemoveAll(dir)
+	defer func() {
+		err := os.RemoveAll(dir)
+		require.NoError(t, err, "failed to remove temp dir")
+	}()
 
 	dm := mockdm.NewMockDiskManager()
 	mt, err := memtable.NewMemtable(dm, filepath.Join(dir, "wal.log"))
@@ -55,25 +61,35 @@ func TestMemtable_Delete(t *testing.T) {
 
 func TestMemtable_Size(t *testing.T) {
 	dir := setupTempDir(t)
-	defer os.RemoveAll(dir)
+	defer func() {
+		err := os.RemoveAll(dir)
+		require.NoError(t, err, "failed to remove temp dir")
+	}()
 
 	dm := mockdm.NewMockDiskManager()
 	mt, err := memtable.NewMemtable(dm, filepath.Join(dir, "wal.log"))
 	require.NoError(t, err, "failed to create memtable")
 
-	mt.Put("a", "1")
-	mt.Put("b", "2")
-	mt.Put("c", "3")
+	err = mt.Put("a", "1")
+	require.NoError(t, err)
+	err = mt.Put("b", "2")
+	require.NoError(t, err)
+	err = mt.Put("c", "3")
+	require.NoError(t, err)
 
 	assert.Equal(t, 3, mt.Size(), "expected size 3")
 
-	mt.Delete("b")
+	err = mt.Delete("b")
+	require.NoError(t, err)
 	assert.Equal(t, 2, mt.Size(), "expected size 2 after delete")
 }
 
 func TestMemtable_Replay(t *testing.T) {
 	dir := setupTempDir(t)
-	defer os.RemoveAll(dir)
+	defer func() {
+		err := os.RemoveAll(dir)
+		require.NoError(t, err, "failed to remove temp dir")
+	}()
 
 	walPath := filepath.Join(dir, "wal.log")
 	dm := diskmanager.NewDiskManager()
@@ -81,9 +97,12 @@ func TestMemtable_Replay(t *testing.T) {
 	// Initial memtable and writes
 	mt1, err := memtable.NewMemtable(dm, walPath)
 	require.NoError(t, err, "failed to create memtable")
-	mt1.Put("alpha", "1")
-	mt1.Put("beta", "2")
-	mt1.Delete("beta")
+	err = mt1.Put("alpha", "1")
+	require.NoError(t, err)
+	err = mt1.Put("beta", "2")
+	require.NoError(t, err)
+	err = mt1.Delete("beta")
+	require.NoError(t, err)
 
 	// Simulate restart by reloading WAL
 	mt2, err := memtable.NewMemtable(dm, walPath)
@@ -99,7 +118,10 @@ func TestMemtable_Replay(t *testing.T) {
 
 func TestMemtable_Tombstone(t *testing.T) {
 	dir := setupTempDir(t)
-	defer os.RemoveAll(dir)
+	defer func() {
+		err := os.RemoveAll(dir)
+		require.NoError(t, err, "failed to remove temp dir")
+	}()
 
 	dm := mockdm.NewMockDiskManager()
 	mt, err := memtable.NewMemtable(dm, filepath.Join(dir, "wal.log"))
