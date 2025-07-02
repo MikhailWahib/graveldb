@@ -9,6 +9,11 @@ import (
 	"github.com/MikhailWahib/graveldb/internal/shared"
 )
 
+const (
+	// indexInterval controls how many entries to skip before adding to the sparse index
+	indexInterval = 16
+)
+
 // sstWriter provides functionality to write to an SSTable
 type sstWriter struct {
 	dm        diskmanager.DiskManager
@@ -16,6 +21,7 @@ type sstWriter struct {
 	index     []IndexEntry
 	offset    int64
 	indexSize int64
+	count     int // tracks number of entries for sparse indexing
 }
 
 // newSSTWriter creates a new SSTable writer
@@ -72,8 +78,13 @@ func (w *sstWriter) writeEntry(e Entry) error {
 		return err
 	}
 
-	w.offset += n
-	w.index = append(w.index, IndexEntry{Key: e.Key, Offset: entryOffset})
+	w.offset = n
+
+	if w.count%indexInterval == 0 {
+		w.index = append(w.index, IndexEntry{Key: e.Key, Offset: entryOffset})
+	}
+
+	w.count++
 	return nil
 }
 
@@ -82,11 +93,11 @@ func (w *sstWriter) writeIndex() error {
 	indexStartOffset := w.offset
 
 	for _, entry := range w.index {
-		// Write key with prefix
+		// Write key with prefix using IndexEntry type
 		newOffset, err := shared.WriteEntry(shared.Entry{
 			File:   w.file,
 			Offset: w.offset,
-			Type:   shared.PutEntry,
+			Type:   shared.IndexEntry,
 			Key:    entry.Key,
 			Value:  nil,
 		})

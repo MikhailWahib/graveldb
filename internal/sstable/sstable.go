@@ -4,7 +4,6 @@ import (
 	"fmt"
 
 	"github.com/MikhailWahib/graveldb/internal/diskmanager"
-	"github.com/MikhailWahib/graveldb/internal/shared"
 )
 
 // SSTable provides a unified interface for SSTable operations,
@@ -15,20 +14,6 @@ type SSTable struct {
 	writer    *sstWriter
 	isReading bool
 	isWriting bool
-}
-
-// Iterator provides sequential access to entries in an SSTable
-type Iterator interface {
-	// Next advances to the next entry in the SSTable
-	Next() bool
-	// Key returns the current entry's key
-	Key() []byte
-	// Value returns the current entry's value
-	Value() []byte
-	// Type returns the current entry's type
-	Type() shared.EntryType
-	// Error returns any error encountered during iteration
-	Error() error
 }
 
 // NewSSTable creates a new SSTable instance
@@ -99,7 +84,7 @@ func (sst *SSTable) AppendDelete(key []byte) error {
 }
 
 // NewIterator creates a new iterator for the SSTable in read mode
-func (sst *SSTable) NewIterator() (*sstIterator, error) {
+func (sst *SSTable) NewIterator() (*Iterator, error) {
 	if !sst.isReading {
 		return nil, fmt.Errorf("SSTable is not open for reading")
 	}

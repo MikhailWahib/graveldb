@@ -56,7 +56,7 @@ func ReadEntry(f diskmanager.FileHandle, offset int64) (StoredEntry, error) {
 	lenBuf := make([]byte, PrefixSize)
 	_, err := f.ReadAt(lenBuf, offset)
 	if err != nil {
-		return StoredEntry{}, fmt.Errorf("failed to read entry prefix: %w", err)
+		return StoredEntry{}, err
 	}
 
 	// Decode EntryType, key length and value length
@@ -71,12 +71,12 @@ func ReadEntry(f diskmanager.FileHandle, offset int64) (StoredEntry, error) {
 	// Read key and value from file
 	_, err = f.ReadAt(key, offset+PrefixSize)
 	if err != nil {
-		return StoredEntry{}, fmt.Errorf("failed to read key: %w", err)
+		return StoredEntry{}, err
 	}
 
 	_, err = f.ReadAt(value, offset+PrefixSize+int64(keyLen))
 	if err != nil {
-		return StoredEntry{}, fmt.Errorf("failed to read value: %w", err)
+		return StoredEntry{}, err
 	}
 
 	// New offset is the position after the current entry

@@ -5,6 +5,7 @@ package sstable
 import (
 	"encoding/binary"
 	"fmt"
+	"io"
 	"os"
 	"sort"
 
@@ -87,31 +88,45 @@ func (r *sstReader) Close() error {
 
 // Lookup performs a binary search over the sparse index and returns the entry if found
 func (r *sstReader) Lookup(key []byte) ([]byte, error) {
+	// Find index entry with key <= target
 	pos := sort.Search(len(r.index), func(i int) bool {
-		return shared.CompareKeys(r.index[i].Key, key) >= 0
-	})
+		return shared.CompareKeys(r.index[i].Key, key) > 0
+	}) - 1
 
-	if pos == len(r.index) {
-		// Key is beyond last indexed key — not found
+	if pos < 0 {
 		return nil, fmt.Errorf("key not found: %s", key)
 	}
 
-	// Linear scan from found position
+	// Calculate the block boundary
+	blockEnd := r.indexBase
+	if pos+1 < len(r.index) {
+		blockEnd = r.index[pos+1].Offset
+	}
+
+	// Linear scan within the block boundaries
 	offset := r.index[pos].Offset
-	for {
+	var lastValue []byte
+	var foundDeleted bool
+
+	// Remove the indexBase check since blockEnd is now properly set
+	for offset < blockEnd {
 		entry, err := shared.ReadEntry(r.file, offset)
 		if err != nil {
+			if err == io.EOF {
+				break
+			}
 			return nil, fmt.Errorf("failed to read entry: %w", err)
 		}
 
 		cmp := shared.CompareKeys(entry.Key, key)
 		if cmp == 0 {
-			// Key found, with a tombstone check
 			if shared.EntryType(entry.Type) == shared.DeleteEntry {
-				return nil, fmt.Errorf("key marked as deleted: %s", key)
+				foundDeleted = true
+				lastValue = nil
+			} else {
+				lastValue = entry.Value
+				foundDeleted = false
 			}
-			// Key found, return the value
-			return entry.Value, nil
 		}
 
 		if cmp > 0 {
@@ -121,46 +136,53 @@ func (r *sstReader) Lookup(key []byte) ([]byte, error) {
 		offset = entry.NewOffset
 	}
 
-	return nil, fmt.Errorf("key not found: %s", key)
+	if foundDeleted || lastValue == nil {
+		return nil, fmt.Errorf("key not found: %s", key)
+	}
+	return lastValue, nil
 }
 
-// SSTableIterator provides sequential access to entries in an SSTable
-type sstIterator struct {
-	reader *sstReader
-	pos    int
-	entry  *shared.StoredEntry
-	err    error
+// sstIterator provides sequential access to entries in an SSTable
+type Iterator struct {
+	reader  *sstReader
+	offset  int64
+	entry   *shared.StoredEntry
+	dataEnd int64
+	err     error
 }
 
 // NewIterator creates a new iterator that uses the index to iterate over data entries
-func (r *sstReader) newIterator() *sstIterator {
-	return &sstIterator{
-		reader: r,
-		pos:    0,
+func (r *sstReader) newIterator() *Iterator {
+	return &Iterator{
+		reader:  r,
+		offset:  0,
+		dataEnd: r.indexBase,
 	}
 }
 
 // Next advances the iterator to the next entry using the index
-func (it *sstIterator) Next() bool {
-	if it.err != nil {
+func (it *Iterator) Next() bool {
+	if it.err != nil || it.offset >= it.dataEnd {
 		return false
 	}
-	if it.pos >= len(it.reader.index) {
-		return false
-	}
-	offset := it.reader.index[it.pos].Offset
-	entry, err := shared.ReadEntry(it.reader.file, offset)
+
+	entry, err := shared.ReadEntry(it.reader.file, it.offset)
 	if err != nil {
+		if err == io.EOF {
+			it.entry = nil
+			return false
+		}
 		it.err = err
 		return false
 	}
+
 	it.entry = &entry
-	it.pos++
+	it.offset = entry.NewOffset
 	return true
 }
 
 // Key returns the current entry's key
-func (it *sstIterator) Key() []byte {
+func (it *Iterator) Key() []byte {
 	if it.entry == nil {
 		return nil
 	}
@@ -168,7 +190,7 @@ func (it *sstIterator) Key() []byte {
 }
 
 // Value returns the current entry's value
-func (it *sstIterator) Value() []byte {
+func (it *Iterator) Value() []byte {
 	if it.entry == nil {
 		return nil
 	}
@@ -180,14 +202,21 @@ func (it *sstIterator) Value() []byte {
 }
 
 // Type returns the current entry's type
-func (it *sstIterator) Type() shared.EntryType {
+func (it *Iterator) Type() shared.EntryType {
 	if it.entry == nil {
 		return 0
 	}
 	return it.entry.Type
 }
 
+// Reset resets the iterator
+func (it *Iterator) Reset() {
+	it.offset = 0
+	it.entry = nil
+	it.err = nil
+}
+
 // Error returns any error encountered during iteration
-func (it *sstIterator) Error() error {
+func (it *Iterator) Error() error {
 	return it.err
 }

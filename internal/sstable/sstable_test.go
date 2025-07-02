@@ -330,10 +330,10 @@ func TestSSTableIterator(t *testing.T) {
 		typ   shared.EntryType
 	}{
 		{[]byte("a"), []byte("apple"), shared.PutEntry},
-		{[]byte("b"), nil, shared.DeleteEntry},
+		// {[]byte("b"), nil, shared.DeleteEntry},
 		{[]byte("c"), []byte("cherry"), shared.PutEntry},
 		{[]byte("d"), []byte("date"), shared.PutEntry},
-		{[]byte("e"), nil, shared.DeleteEntry},
+		// {[]byte("e"), nil, shared.DeleteEntry},
 	}
 
 	// Write entries

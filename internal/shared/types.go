@@ -8,4 +8,6 @@ const (
 	PutEntry EntryType = iota
 	// DeleteEntry indicates a key deletion operation
 	DeleteEntry
+	// IndexEntry indicates an index record in the SSTable
+	IndexEntry
 )
