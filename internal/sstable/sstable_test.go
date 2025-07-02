@@ -407,3 +407,183 @@ func TestSSTableEmptyIterator(t *testing.T) {
 
 	require.NoError(t, sst.Close())
 }
+
+func createSST(t *testing.T, dm diskmanager.DiskManager, path string, entries []entry) *sstable.SSTable {
+	sst := sstable.NewSSTable(dm)
+	require.NoError(t, sst.OpenForWrite(path))
+
+	for _, e := range entries {
+		if e.typ == shared.PutEntry {
+			require.NoError(t, sst.AppendPut([]byte(e.key), []byte(e.value)))
+		} else {
+			require.NoError(t, sst.AppendDelete([]byte(e.key)))
+		}
+	}
+	require.NoError(t, sst.Finish())
+	require.NoError(t, sst.OpenForRead(path))
+	return sst
+}
+
+type entry struct {
+	key   string
+	value string
+	typ   shared.EntryType
+}
+
+func TestMerger_MergesCorrectly(t *testing.T) {
+	tempDir, dm := setup(t)
+	defer func() {
+		if err := os.RemoveAll(tempDir); err != nil {
+			t.Errorf("failed to cleanup temp dir: %v", err)
+		}
+	}()
+
+	// Old SSTable: a=1, b=2, c=3
+	oldSSTPath := filepath.Join(tempDir, "old.sst")
+	oldEntries := []entry{
+		{"a", "1", shared.PutEntry},
+		{"b", "2", shared.PutEntry},
+		{"c", "3", shared.PutEntry},
+	}
+	oldSST := createSST(t, dm, oldSSTPath, oldEntries)
+
+	// New SSTable: b=22 (overwrite), c=delete, d=4
+	newSSTPath := filepath.Join(tempDir, "new.sst")
+	newEntries := []entry{
+		{"b", "22", shared.PutEntry},
+		{"c", "", shared.DeleteEntry},
+		{"d", "4", shared.PutEntry},
+	}
+	newSST := createSST(t, dm, newSSTPath, newEntries)
+
+	// Setup output SSTable
+	outputPath := filepath.Join(tempDir, "merged.sst")
+	outputSST := sstable.NewSSTable(dm)
+	require.NoError(t, outputSST.OpenForWrite(outputPath))
+
+	// Merge
+	merger := sstable.NewMerger()
+	require.NoError(t, merger.AddSource(oldSST)) // Older goes first
+	require.NoError(t, merger.AddSource(newSST)) // Newer overrides
+	merger.SetOutput(outputSST)
+
+	require.NoError(t, merger.Merge())
+
+	// Read merged SSTable
+	require.NoError(t, outputSST.OpenForRead(outputPath))
+	iter, err := outputSST.NewIterator()
+	require.NoError(t, err)
+
+	expected := []entry{
+		{"a", "1", shared.PutEntry},
+		{"b", "22", shared.PutEntry},  // newer value
+		{"c", "", shared.DeleteEntry}, // deleted
+		{"d", "4", shared.PutEntry},
+	}
+
+	i := 0
+	for iter.Next() {
+		require.Less(t, i, len(expected), "Too many entries")
+		exp := expected[i]
+		assert.Equal(t, exp.key, string(iter.Key()), "key mismatch at index %d", i)
+		assert.Equal(t, exp.typ, iter.Type(), "entry type mismatch")
+
+		if exp.typ == shared.PutEntry {
+			assert.Equal(t, exp.value, string(iter.Value()), "value mismatch")
+		} else {
+			assert.True(t, iter.IsDeleted(), "should be deleted")
+			assert.Nil(t, iter.Value())
+		}
+		i++
+	}
+
+	assert.Equal(t, len(expected), i, "entry count mismatch")
+	assert.NoError(t, iter.Error())
+	require.NoError(t, outputSST.Close())
+}
+
+func TestMerger_MultipleSSTablesMerge(t *testing.T) {
+	tempDir, dm := setup(t)
+	defer func() {
+		if err := os.RemoveAll(tempDir); err != nil {
+			t.Errorf("failed to cleanup temp dir: %v", err)
+		}
+	}()
+
+	// SST1: a=1, b=2, c=3
+	sst1Path := filepath.Join(tempDir, "sst1.sst")
+	sst1 := createSST(t, dm, sst1Path, []entry{
+		{"a", "1", shared.PutEntry},
+		{"b", "2", shared.PutEntry},
+		{"c", "3", shared.PutEntry},
+	})
+
+	// SST2: b=22, d=4
+	sst2Path := filepath.Join(tempDir, "sst2.sst")
+	sst2 := createSST(t, dm, sst2Path, []entry{
+		{"b", "22", shared.PutEntry}, // overwrites b from sst1
+		{"d", "4", shared.PutEntry},
+	})
+
+	// SST3: c=delete, e=5
+	sst3Path := filepath.Join(tempDir, "sst3.sst")
+	sst3 := createSST(t, dm, sst3Path, []entry{
+		{"c", "", shared.DeleteEntry}, // deletes c from sst1
+		{"e", "5", shared.PutEntry},
+	})
+
+	sst4Path := filepath.Join(tempDir, "sst4.sst")
+	sst4 := createSST(t, dm, sst4Path, []entry{
+		{"f", "fifi", shared.PutEntry},
+		{"g", "gigi", shared.PutEntry},
+	})
+
+	// Output SSTable
+	mergedPath := filepath.Join(tempDir, "merged_multi.sst")
+	output := sstable.NewSSTable(dm)
+	require.NoError(t, output.OpenForWrite(mergedPath))
+
+	// Merge
+	merger := sstable.NewMerger()
+	require.NoError(t, merger.AddSource(sst1)) // oldest
+	require.NoError(t, merger.AddSource(sst2))
+	require.NoError(t, merger.AddSource(sst3)) // newest
+	require.NoError(t, merger.AddSource(sst4)) // newest
+	merger.SetOutput(output)
+	require.NoError(t, merger.Merge())
+
+	// Open result for reading
+	require.NoError(t, output.OpenForRead(mergedPath))
+	iter, err := output.NewIterator()
+	require.NoError(t, err)
+
+	// Expected after merge
+	expected := []entry{
+		{"a", "1", shared.PutEntry},
+		{"b", "22", shared.PutEntry},  // from sst2
+		{"c", "", shared.DeleteEntry}, // deleted in sst3
+		{"d", "4", shared.PutEntry},   // from sst2
+		{"e", "5", shared.PutEntry},   // from sst3
+		{"f", "fifi", shared.PutEntry},
+		{"g", "gigi", shared.PutEntry},
+	}
+
+	i := 0
+	for iter.Next() {
+		require.Less(t, i, len(expected), "Too many entries")
+		exp := expected[i]
+		assert.Equal(t, exp.key, string(iter.Key()), "Key mismatch at index %d", i)
+		assert.Equal(t, exp.typ, iter.Type(), "Type mismatch at index %d", i)
+		if exp.typ == shared.PutEntry {
+			assert.Equal(t, exp.value, string(iter.Value()), "Value mismatch")
+		} else {
+			assert.True(t, iter.IsDeleted())
+			assert.Nil(t, iter.Value())
+		}
+		i++
+	}
+
+	assert.Equal(t, len(expected), i, "Entry count mismatch")
+	assert.NoError(t, iter.Error())
+	require.NoError(t, output.Close())
+}

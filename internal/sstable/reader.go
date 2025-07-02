@@ -108,7 +108,6 @@ func (r *sstReader) Lookup(key []byte) ([]byte, error) {
 	var lastValue []byte
 	var foundDeleted bool
 
-	// Remove the indexBase check since blockEnd is now properly set
 	for offset < blockEnd {
 		entry, err := shared.ReadEntry(r.file, offset)
 		if err != nil {
@@ -151,7 +150,7 @@ type Iterator struct {
 	err     error
 }
 
-// NewIterator creates a new iterator that uses the index to iterate over data entries
+// newIterator creates a new iterator that uses the index to iterate over data entries
 func (r *sstReader) newIterator() *Iterator {
 	return &Iterator{
 		reader:  r,
@@ -214,6 +213,11 @@ func (it *Iterator) Reset() {
 	it.offset = 0
 	it.entry = nil
 	it.err = nil
+}
+
+// IsDeleted return true if the current value is deleted
+func (it *Iterator) IsDeleted() bool {
+	return it.entry.Type == shared.DeleteEntry
 }
 
 // Error returns any error encountered during iteration
