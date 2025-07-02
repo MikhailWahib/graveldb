@@ -142,7 +142,7 @@ func (r *sstReader) Lookup(key []byte) ([]byte, error) {
 	return lastValue, nil
 }
 
-// sstIterator provides sequential access to entries in an SSTable
+// Iterator provides sequential access to entries in an SSTable
 type Iterator struct {
 	reader  *sstReader
 	offset  int64
