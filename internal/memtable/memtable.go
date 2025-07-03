@@ -3,11 +3,7 @@
 package memtable
 
 import (
-	"fmt"
-
 	"github.com/MikhailWahib/graveldb/internal/diskmanager"
-	"github.com/MikhailWahib/graveldb/internal/shared"
-	"github.com/MikhailWahib/graveldb/internal/wal"
 )
 
 // TOMBSTONE represents a deletion marker in the memtable
@@ -32,47 +28,18 @@ type Memtable interface {
 // SkiplistMemtable implements the Memtable interface using a skiplist
 // data structure for efficient operations
 type SkiplistMemtable struct {
-	sl  *SkipList
-	wal *wal.WAL
+	sl *SkipList
 }
 
 // NewMemtable creates a new Memtable instance with a Write-Ahead Log (WAL).
-func NewMemtable(dm diskmanager.DiskManager, walPath string) (Memtable, error) {
-	w, err := wal.NewWAL(dm, walPath)
-	if err != nil {
-		return nil, err
+func NewMemtable(dm diskmanager.DiskManager) Memtable {
+	return &SkiplistMemtable{
+		sl: NewSkipList(),
 	}
-
-	mt := &SkiplistMemtable{
-		sl:  NewSkipList(),
-		wal: w,
-	}
-
-	// Rebuild memtable from WAL
-	entries, err := w.Replay()
-	if err != nil {
-		return nil, err
-	}
-
-	for _, e := range entries {
-		switch e.Type {
-		case shared.PutEntry:
-			mt.sl.Put(e.Key, e.Value)
-		case shared.DeleteEntry:
-			mt.sl.Delete(e.Key)
-		}
-	}
-
-	return mt, nil
 }
 
 // Put inserts or updates a key-value pair in the memtable
 func (m *SkiplistMemtable) Put(key, value string) error {
-	err := m.wal.AppendPut(key, value)
-	if err != nil {
-		return err
-	}
-
 	m.sl.Put(key, value)
 	return nil
 }
@@ -84,11 +51,6 @@ func (m *SkiplistMemtable) Get(key string) (string, bool) {
 
 // Delete removes a key from the memtable
 func (m *SkiplistMemtable) Delete(key string) error {
-	err := m.wal.AppendDelete(key)
-	if err != nil {
-		return fmt.Errorf("failed to append delete operation to WAL: %v", err)
-	}
-
 	val, ok := m.sl.Get(key)
 
 	// Ignore the case where the key is already deleted
