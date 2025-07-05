@@ -3,11 +3,8 @@ package sstable_test
 import (
 	"bytes"
 	"fmt"
-	"os"
-	"path/filepath"
 	"testing"
 
-	"github.com/MikhailWahib/graveldb/internal/diskmanager"
 	"github.com/MikhailWahib/graveldb/internal/diskmanager/mockdm"
 	"github.com/MikhailWahib/graveldb/internal/shared"
 	"github.com/MikhailWahib/graveldb/internal/sstable"
@@ -15,22 +12,8 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func setup(t *testing.T) (string, diskmanager.DiskManager) {
-	tempDir := filepath.Join(os.TempDir(), "sstable_test")
-	err := os.MkdirAll(tempDir, 0755)
-	require.NoError(t, err)
-
-	dm := mockdm.NewMockDiskManager()
-	return tempDir, dm
-}
-
 func TestSSTableWriteRead(t *testing.T) {
-	tempDir, dm := setup(t)
-	defer func() {
-		if err := os.RemoveAll(tempDir); err != nil {
-			t.Errorf("failed to cleanup temp dir: %v", err)
-		}
-	}()
+	dm := mockdm.NewMockDiskManager()
 
 	testData := []struct {
 		key   string
@@ -43,7 +26,7 @@ func TestSSTableWriteRead(t *testing.T) {
 	}
 
 	// Create the SSTable
-	sstPath := filepath.Join(tempDir, "test.sst")
+	sstPath := "01.sst"
 	sst := sstable.NewSSTable(dm)
 	err := sst.OpenForWrite(sstPath)
 	require.NoError(t, err)
@@ -78,14 +61,8 @@ func TestSSTableWriteRead(t *testing.T) {
 }
 
 func TestSSTableEmptyValue(t *testing.T) {
-	tempDir, dm := setup(t)
-	defer func() {
-		if err := os.RemoveAll(tempDir); err != nil {
-			t.Errorf("failed to cleanup temp dir: %v", err)
-		}
-	}()
-
-	sstPath := filepath.Join(tempDir, "empty_value.sst")
+	dm := mockdm.NewMockDiskManager()
+	sstPath := "empty_value.sst"
 
 	// Create SSTable with empty values
 	sst := sstable.NewSSTable(dm)
@@ -112,14 +89,9 @@ func TestSSTableEmptyValue(t *testing.T) {
 }
 
 func TestSSTableLargeKeyValues(t *testing.T) {
-	tempDir, dm := setup(t)
-	defer func() {
-		if err := os.RemoveAll(tempDir); err != nil {
-			t.Errorf("failed to cleanup temp dir: %v", err)
-		}
-	}()
+	dm := mockdm.NewMockDiskManager()
 
-	sstPath := filepath.Join(tempDir, "large_data.sst")
+	sstPath := "large_data.sst"
 
 	// Create SSTable with large values
 	sst := sstable.NewSSTable(dm)
@@ -169,18 +141,11 @@ func TestSSTableLargeKeyValues(t *testing.T) {
 }
 
 func BenchmarkSSTableWriting(b *testing.B) {
-	tempDir := filepath.Join(os.TempDir(), "sstable_bench_write")
-	defer func() {
-		if err := os.RemoveAll(tempDir); err != nil {
-			b.Errorf("failed to cleanup temp dir: %v", err)
-		}
-	}()
-
 	dm := mockdm.NewMockDiskManager()
 
 	for b.Loop() {
 		b.StopTimer()
-		sstPath := filepath.Join(tempDir, "bench_write.sst")
+		sstPath := "bench_write.sst"
 		sst := sstable.NewSSTable(dm)
 		err := sst.OpenForWrite(sstPath)
 		if err != nil {
@@ -207,15 +172,8 @@ func BenchmarkSSTableWriting(b *testing.B) {
 }
 
 func BenchmarkSSTableReading(b *testing.B) {
-	tempDir := filepath.Join(os.TempDir(), "sstable_bench_read")
-	defer func() {
-		if err := os.RemoveAll(tempDir); err != nil {
-			b.Errorf("failed to cleanup temp dir: %v", err)
-		}
-	}()
-
 	dm := mockdm.NewMockDiskManager()
-	sstPath := filepath.Join(tempDir, "bench_read.sst")
+	sstPath := "bench_read.sst"
 
 	// Create a benchmark SSTable first
 	sst := sstable.NewSSTable(dm)
@@ -262,14 +220,9 @@ func BenchmarkSSTableReading(b *testing.B) {
 }
 
 func TestNonExistentKeyLookup(t *testing.T) {
-	tempDir, dm := setup(t)
-	defer func() {
-		if err := os.RemoveAll(tempDir); err != nil {
-			t.Errorf("failed to cleanup temp dir: %v", err)
-		}
-	}()
+	dm := mockdm.NewMockDiskManager()
 
-	sstPath := filepath.Join(tempDir, "test_missing.sst")
+	sstPath := "test_missing.sst"
 
 	// Create the SSTable with some entries
 	sst := sstable.NewSSTable(dm)
@@ -309,14 +262,9 @@ func TestNonExistentKeyLookup(t *testing.T) {
 }
 
 func TestSSTableIterator(t *testing.T) {
-	tempDir, dm := setup(t)
-	defer func() {
-		if err := os.RemoveAll(tempDir); err != nil {
-			t.Errorf("failed to cleanup temp dir: %v", err)
-		}
-	}()
+	dm := mockdm.NewMockDiskManager()
 
-	sstPath := filepath.Join(tempDir, "test_iterator.sst")
+	sstPath := "test_iterator.sst"
 
 	// Create the SSTable with some entries
 	sst := sstable.NewSSTable(dm)
@@ -375,14 +323,9 @@ func TestSSTableIterator(t *testing.T) {
 }
 
 func TestSSTableEmptyIterator(t *testing.T) {
-	tempDir, dm := setup(t)
-	defer func() {
-		if err := os.RemoveAll(tempDir); err != nil {
-			t.Errorf("failed to cleanup temp dir: %v", err)
-		}
-	}()
+	dm := mockdm.NewMockDiskManager()
 
-	sstPath := filepath.Join(tempDir, "test_empty_iterator.sst")
+	sstPath := "test_empty_iterator.sst"
 
 	// Create an empty SSTable
 	sst := sstable.NewSSTable(dm)
@@ -408,7 +351,7 @@ func TestSSTableEmptyIterator(t *testing.T) {
 	require.NoError(t, sst.Close())
 }
 
-func createSST(t *testing.T, dm diskmanager.DiskManager, path string, entries []entry) *sstable.SSTable {
+func createSST(t *testing.T, dm *mockdm.MockDiskManager, path string, entries []entry) *sstable.SSTable {
 	sst := sstable.NewSSTable(dm)
 	require.NoError(t, sst.OpenForWrite(path))
 
@@ -431,15 +374,10 @@ type entry struct {
 }
 
 func TestMerger_MergesCorrectly(t *testing.T) {
-	tempDir, dm := setup(t)
-	defer func() {
-		if err := os.RemoveAll(tempDir); err != nil {
-			t.Errorf("failed to cleanup temp dir: %v", err)
-		}
-	}()
+	dm := mockdm.NewMockDiskManager()
 
 	// Old SSTable: a=1, b=2, c=3
-	oldSSTPath := filepath.Join(tempDir, "old.sst")
+	oldSSTPath := "old.sst"
 	oldEntries := []entry{
 		{"a", "1", shared.PutEntry},
 		{"b", "2", shared.PutEntry},
@@ -448,7 +386,7 @@ func TestMerger_MergesCorrectly(t *testing.T) {
 	oldSST := createSST(t, dm, oldSSTPath, oldEntries)
 
 	// New SSTable: b=22 (overwrite), c=delete, d=4
-	newSSTPath := filepath.Join(tempDir, "new.sst")
+	newSSTPath := "new.sst"
 	newEntries := []entry{
 		{"b", "22", shared.PutEntry},
 		{"c", "", shared.DeleteEntry},
@@ -457,7 +395,7 @@ func TestMerger_MergesCorrectly(t *testing.T) {
 	newSST := createSST(t, dm, newSSTPath, newEntries)
 
 	// Setup output SSTable
-	outputPath := filepath.Join(tempDir, "merged.sst")
+	outputPath := "merged.sst"
 	outputSST := sstable.NewSSTable(dm)
 	require.NoError(t, outputSST.OpenForWrite(outputPath))
 
@@ -503,15 +441,10 @@ func TestMerger_MergesCorrectly(t *testing.T) {
 }
 
 func TestMerger_MultipleSSTablesMerge(t *testing.T) {
-	tempDir, dm := setup(t)
-	defer func() {
-		if err := os.RemoveAll(tempDir); err != nil {
-			t.Errorf("failed to cleanup temp dir: %v", err)
-		}
-	}()
+	dm := mockdm.NewMockDiskManager()
 
 	// SST1: a=1, b=2, c=3
-	sst1Path := filepath.Join(tempDir, "sst1.sst")
+	sst1Path := "sst1.sst"
 	sst1 := createSST(t, dm, sst1Path, []entry{
 		{"a", "1", shared.PutEntry},
 		{"b", "2", shared.PutEntry},
@@ -519,27 +452,27 @@ func TestMerger_MultipleSSTablesMerge(t *testing.T) {
 	})
 
 	// SST2: b=22, d=4
-	sst2Path := filepath.Join(tempDir, "sst2.sst")
+	sst2Path := "sst2.sst"
 	sst2 := createSST(t, dm, sst2Path, []entry{
 		{"b", "22", shared.PutEntry}, // overwrites b from sst1
 		{"d", "4", shared.PutEntry},
 	})
 
 	// SST3: c=delete, e=5
-	sst3Path := filepath.Join(tempDir, "sst3.sst")
+	sst3Path := "sst3.sst"
 	sst3 := createSST(t, dm, sst3Path, []entry{
 		{"c", "", shared.DeleteEntry}, // deletes c from sst1
 		{"e", "5", shared.PutEntry},
 	})
 
-	sst4Path := filepath.Join(tempDir, "sst4.sst")
+	sst4Path := "sst4.sst"
 	sst4 := createSST(t, dm, sst4Path, []entry{
 		{"f", "fifi", shared.PutEntry},
 		{"g", "gigi", shared.PutEntry},
 	})
 
 	// Output SSTable
-	mergedPath := filepath.Join(tempDir, "merged_multi.sst")
+	mergedPath := "merged_multi.sst"
 	output := sstable.NewSSTable(dm)
 	require.NoError(t, output.OpenForWrite(mergedPath))
 
