@@ -5,7 +5,6 @@ import (
 	"io"
 	"os"
 
-	"github.com/MikhailWahib/graveldb/internal/diskmanager"
 	"github.com/MikhailWahib/graveldb/internal/shared"
 )
 
@@ -18,15 +17,14 @@ type Entry struct {
 
 // WAL manages the write-ahead log file
 type WAL struct {
-	dm          diskmanager.DiskManager
 	path        string
-	file        diskmanager.FileHandle
+	file        *os.File
 	writeOffset int64
 }
 
 // NewWAL creates a new WAL that uses DiskManager for file operations
-func NewWAL(dm diskmanager.DiskManager, path string) (*WAL, error) {
-	file, err := dm.Open(path, os.O_RDWR|os.O_CREATE, 0644)
+func NewWAL(path string) (*WAL, error) {
+	file, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE, 0644)
 	if err != nil {
 		return nil, err
 	}
@@ -38,7 +36,6 @@ func NewWAL(dm diskmanager.DiskManager, path string) (*WAL, error) {
 	}
 
 	return &WAL{
-		dm:          dm,
 		path:        path,
 		file:        file,
 		writeOffset: fileInfo.Size(),
@@ -123,5 +120,5 @@ func (w *WAL) Close() error {
 	if err := w.Sync(); err != nil {
 		return err
 	}
-	return w.dm.Close(w.path)
+	return w.file.Close()
 }

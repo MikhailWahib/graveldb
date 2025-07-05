@@ -3,13 +3,12 @@ package shared
 import (
 	"encoding/binary"
 	"fmt"
-
-	"github.com/MikhailWahib/graveldb/internal/diskmanager"
+	"os"
 )
 
 // Entry represents a database entry to be written to storage
 type Entry struct {
-	File   diskmanager.FileHandle
+	File   *os.File
 	Offset int64
 	Type   EntryType
 	Key    []byte
@@ -51,7 +50,7 @@ type StoredEntry struct {
 
 // ReadEntry reads a key-value entry from the file with a length-prefixed format.
 // Format: [1 byte EntryType][4 bytes KeyLen][4 bytes ValueLen][Key][Value]
-func ReadEntry(f diskmanager.FileHandle, offset int64) (StoredEntry, error) {
+func ReadEntry(f *os.File, offset int64) (StoredEntry, error) {
 	// read the length of the EntryType key and value
 	lenBuf := make([]byte, PrefixSize)
 	_, err := f.ReadAt(lenBuf, offset)

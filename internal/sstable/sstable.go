@@ -2,14 +2,11 @@ package sstable
 
 import (
 	"fmt"
-
-	"github.com/MikhailWahib/graveldb/internal/diskmanager"
 )
 
 // SSTable provides a unified interface for SSTable operations,
 // internally delegating to SSTReader and SSTWriter
 type SSTable struct {
-	dm        diskmanager.DiskManager
 	reader    *sstReader
 	writer    *sstWriter
 	isReading bool
@@ -17,9 +14,8 @@ type SSTable struct {
 }
 
 // NewSSTable creates a new SSTable instance
-func NewSSTable(dm diskmanager.DiskManager) *SSTable {
+func NewSSTable() *SSTable {
 	return &SSTable{
-		dm:        dm,
 		isReading: false,
 		isWriting: false,
 	}
@@ -31,7 +27,7 @@ func (sst *SSTable) OpenForRead(filename string) error {
 		return fmt.Errorf("SSTable is already open for reading or writing")
 	}
 
-	reader := newSSTReader(sst.dm)
+	reader := newSSTReader()
 	err := reader.Open(filename)
 	if err != nil {
 		return err
@@ -48,7 +44,7 @@ func (sst *SSTable) OpenForWrite(filename string) error {
 		return fmt.Errorf("SSTable is already open for reading or writing")
 	}
 
-	writer := newSSTWriter(sst.dm)
+	writer := newSSTWriter()
 	err := writer.Open(filename)
 	if err != nil {
 		return err

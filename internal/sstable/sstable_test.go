@@ -3,9 +3,9 @@ package sstable_test
 import (
 	"bytes"
 	"fmt"
+	"path/filepath"
 	"testing"
 
-	"github.com/MikhailWahib/graveldb/internal/diskmanager/mockdm"
 	"github.com/MikhailWahib/graveldb/internal/shared"
 	"github.com/MikhailWahib/graveldb/internal/sstable"
 	"github.com/stretchr/testify/assert"
@@ -13,8 +13,6 @@ import (
 )
 
 func TestSSTableWriteRead(t *testing.T) {
-	dm := mockdm.NewMockDiskManager()
-
 	testData := []struct {
 		key   string
 		value string
@@ -25,9 +23,12 @@ func TestSSTableWriteRead(t *testing.T) {
 		{"date", "brown"},
 	}
 
+	// Create temporary directory
+	tempDir := t.TempDir()
+	sstPath := filepath.Join(tempDir, "01.sst")
+
 	// Create the SSTable
-	sstPath := "01.sst"
-	sst := sstable.NewSSTable(dm)
+	sst := sstable.NewSSTable()
 	err := sst.OpenForWrite(sstPath)
 	require.NoError(t, err)
 
@@ -42,7 +43,7 @@ func TestSSTableWriteRead(t *testing.T) {
 	require.NoError(t, err)
 
 	// Read the SSTable
-	sst = sstable.NewSSTable(dm)
+	sst = sstable.NewSSTable()
 	err = sst.OpenForRead(sstPath)
 	require.NoError(t, err)
 
@@ -61,11 +62,11 @@ func TestSSTableWriteRead(t *testing.T) {
 }
 
 func TestSSTableEmptyValue(t *testing.T) {
-	dm := mockdm.NewMockDiskManager()
-	sstPath := "empty_value.sst"
+	tempDir := t.TempDir()
+	sstPath := filepath.Join(tempDir, "empty_value.sst")
 
 	// Create SSTable with empty values
-	sst := sstable.NewSSTable(dm)
+	sst := sstable.NewSSTable()
 	err := sst.OpenForWrite(sstPath)
 	require.NoError(t, err)
 
@@ -76,7 +77,7 @@ func TestSSTableEmptyValue(t *testing.T) {
 	require.NoError(t, err)
 
 	// Read the SSTable
-	sst = sstable.NewSSTable(dm)
+	sst = sstable.NewSSTable()
 	err = sst.OpenForRead(sstPath)
 	require.NoError(t, err)
 
@@ -89,12 +90,11 @@ func TestSSTableEmptyValue(t *testing.T) {
 }
 
 func TestSSTableLargeKeyValues(t *testing.T) {
-	dm := mockdm.NewMockDiskManager()
-
-	sstPath := "large_data.sst"
+	tempDir := t.TempDir()
+	sstPath := filepath.Join(tempDir, "large_data.sst")
 
 	// Create SSTable with large values
-	sst := sstable.NewSSTable(dm)
+	sst := sstable.NewSSTable()
 	err := sst.OpenForWrite(sstPath)
 	require.NoError(t, err)
 
@@ -121,7 +121,7 @@ func TestSSTableLargeKeyValues(t *testing.T) {
 	require.NoError(t, err)
 
 	// Read the SSTable
-	sst = sstable.NewSSTable(dm)
+	sst = sstable.NewSSTable()
 	err = sst.OpenForRead(sstPath)
 	require.NoError(t, err)
 
@@ -141,12 +141,11 @@ func TestSSTableLargeKeyValues(t *testing.T) {
 }
 
 func BenchmarkSSTableWriting(b *testing.B) {
-	dm := mockdm.NewMockDiskManager()
-
 	for b.Loop() {
 		b.StopTimer()
-		sstPath := "bench_write.sst"
-		sst := sstable.NewSSTable(dm)
+		tempDir := b.TempDir()
+		sstPath := filepath.Join(tempDir, "bench_write.sst")
+		sst := sstable.NewSSTable()
 		err := sst.OpenForWrite(sstPath)
 		if err != nil {
 			b.Fatalf("Failed to open SSTable for write: %v", err)
@@ -172,11 +171,11 @@ func BenchmarkSSTableWriting(b *testing.B) {
 }
 
 func BenchmarkSSTableReading(b *testing.B) {
-	dm := mockdm.NewMockDiskManager()
-	sstPath := "bench_read.sst"
+	tempDir := b.TempDir()
+	sstPath := filepath.Join(tempDir, "bench_read.sst")
 
 	// Create a benchmark SSTable first
-	sst := sstable.NewSSTable(dm)
+	sst := sstable.NewSSTable()
 	err := sst.OpenForWrite(sstPath)
 	if err != nil {
 		b.Fatalf("Failed to open SSTable for write: %v", err)
@@ -197,7 +196,7 @@ func BenchmarkSSTableReading(b *testing.B) {
 	}
 
 	// Now benchmark lookups
-	sst = sstable.NewSSTable(dm)
+	sst = sstable.NewSSTable()
 	err = sst.OpenForRead(sstPath)
 	if err != nil {
 		b.Fatalf("Failed to open SSTable for read: %v", err)
@@ -220,12 +219,11 @@ func BenchmarkSSTableReading(b *testing.B) {
 }
 
 func TestNonExistentKeyLookup(t *testing.T) {
-	dm := mockdm.NewMockDiskManager()
-
-	sstPath := "test_missing.sst"
+	tempDir := t.TempDir()
+	sstPath := filepath.Join(tempDir, "test_missing.sst")
 
 	// Create the SSTable with some entries
-	sst := sstable.NewSSTable(dm)
+	sst := sstable.NewSSTable()
 	err := sst.OpenForWrite(sstPath)
 	require.NoError(t, err)
 
@@ -240,7 +238,7 @@ func TestNonExistentKeyLookup(t *testing.T) {
 	require.NoError(t, err)
 
 	// Read the SSTable
-	sst = sstable.NewSSTable(dm)
+	sst = sstable.NewSSTable()
 	err = sst.OpenForRead(sstPath)
 	require.NoError(t, err)
 
@@ -262,12 +260,11 @@ func TestNonExistentKeyLookup(t *testing.T) {
 }
 
 func TestSSTableIterator(t *testing.T) {
-	dm := mockdm.NewMockDiskManager()
-
-	sstPath := "test_iterator.sst"
+	tempDir := t.TempDir()
+	sstPath := filepath.Join(tempDir, "test_iterator.sst")
 
 	// Create the SSTable with some entries
-	sst := sstable.NewSSTable(dm)
+	sst := sstable.NewSSTable()
 	err := sst.OpenForWrite(sstPath)
 	require.NoError(t, err)
 
@@ -323,12 +320,11 @@ func TestSSTableIterator(t *testing.T) {
 }
 
 func TestSSTableEmptyIterator(t *testing.T) {
-	dm := mockdm.NewMockDiskManager()
-
-	sstPath := "test_empty_iterator.sst"
+	tempDir := t.TempDir()
+	sstPath := filepath.Join(tempDir, "test_empty_iterator.sst")
 
 	// Create an empty SSTable
-	sst := sstable.NewSSTable(dm)
+	sst := sstable.NewSSTable()
 	err := sst.OpenForWrite(sstPath)
 	require.NoError(t, err)
 
@@ -351,8 +347,8 @@ func TestSSTableEmptyIterator(t *testing.T) {
 	require.NoError(t, sst.Close())
 }
 
-func createSST(t *testing.T, dm *mockdm.MockDiskManager, path string, entries []entry) *sstable.SSTable {
-	sst := sstable.NewSSTable(dm)
+func createSST(t *testing.T, path string, entries []entry) *sstable.SSTable {
+	sst := sstable.NewSSTable()
 	require.NoError(t, sst.OpenForWrite(path))
 
 	for _, e := range entries {
@@ -374,29 +370,29 @@ type entry struct {
 }
 
 func TestMerger_MergesCorrectly(t *testing.T) {
-	dm := mockdm.NewMockDiskManager()
+	tempDir := t.TempDir()
 
 	// Old SSTable: a=1, b=2, c=3
-	oldSSTPath := "old.sst"
+	oldSSTPath := filepath.Join(tempDir, "old.sst")
 	oldEntries := []entry{
 		{"a", "1", shared.PutEntry},
 		{"b", "2", shared.PutEntry},
 		{"c", "3", shared.PutEntry},
 	}
-	oldSST := createSST(t, dm, oldSSTPath, oldEntries)
+	oldSST := createSST(t, oldSSTPath, oldEntries)
 
 	// New SSTable: b=22 (overwrite), c=delete, d=4
-	newSSTPath := "new.sst"
+	newSSTPath := filepath.Join(tempDir, "new.sst")
 	newEntries := []entry{
 		{"b", "22", shared.PutEntry},
 		{"c", "", shared.DeleteEntry},
 		{"d", "4", shared.PutEntry},
 	}
-	newSST := createSST(t, dm, newSSTPath, newEntries)
+	newSST := createSST(t, newSSTPath, newEntries)
 
 	// Setup output SSTable
-	outputPath := "merged.sst"
-	outputSST := sstable.NewSSTable(dm)
+	outputPath := filepath.Join(tempDir, "merged.sst")
+	outputSST := sstable.NewSSTable()
 	require.NoError(t, outputSST.OpenForWrite(outputPath))
 
 	// Merge
@@ -441,39 +437,39 @@ func TestMerger_MergesCorrectly(t *testing.T) {
 }
 
 func TestMerger_MultipleSSTablesMerge(t *testing.T) {
-	dm := mockdm.NewMockDiskManager()
+	tempDir := t.TempDir()
 
 	// SST1: a=1, b=2, c=3
-	sst1Path := "sst1.sst"
-	sst1 := createSST(t, dm, sst1Path, []entry{
+	sst1Path := filepath.Join(tempDir, "sst1.sst")
+	sst1 := createSST(t, sst1Path, []entry{
 		{"a", "1", shared.PutEntry},
 		{"b", "2", shared.PutEntry},
 		{"c", "3", shared.PutEntry},
 	})
 
 	// SST2: b=22, d=4
-	sst2Path := "sst2.sst"
-	sst2 := createSST(t, dm, sst2Path, []entry{
+	sst2Path := filepath.Join(tempDir, "sst2.sst")
+	sst2 := createSST(t, sst2Path, []entry{
 		{"b", "22", shared.PutEntry}, // overwrites b from sst1
 		{"d", "4", shared.PutEntry},
 	})
 
 	// SST3: c=delete, e=5
-	sst3Path := "sst3.sst"
-	sst3 := createSST(t, dm, sst3Path, []entry{
+	sst3Path := filepath.Join(tempDir, "sst3.sst")
+	sst3 := createSST(t, sst3Path, []entry{
 		{"c", "", shared.DeleteEntry}, // deletes c from sst1
 		{"e", "5", shared.PutEntry},
 	})
 
-	sst4Path := "sst4.sst"
-	sst4 := createSST(t, dm, sst4Path, []entry{
+	sst4Path := filepath.Join(tempDir, "sst4.sst")
+	sst4 := createSST(t, sst4Path, []entry{
 		{"f", "fifi", shared.PutEntry},
 		{"g", "gigi", shared.PutEntry},
 	})
 
 	// Output SSTable
-	mergedPath := "merged_multi.sst"
-	output := sstable.NewSSTable(dm)
+	mergedPath := filepath.Join(tempDir, "merged_multi.sst")
+	output := sstable.NewSSTable()
 	require.NoError(t, output.OpenForWrite(mergedPath))
 
 	// Merge

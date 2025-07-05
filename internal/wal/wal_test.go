@@ -4,25 +4,22 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/MikhailWahib/graveldb/internal/diskmanager"
 	"github.com/MikhailWahib/graveldb/internal/shared"
 	"github.com/MikhailWahib/graveldb/internal/wal"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
-func setup(t *testing.T, path string) (string, diskmanager.DiskManager) {
+func setup(t *testing.T, path string) string {
 	testDir := t.TempDir()
 	walPath := filepath.Join(testDir, path)
-	dm := diskmanager.NewDiskManager()
-	return walPath, dm
-
+	return walPath
 }
 
 func TestWAL_BasicOperations(t *testing.T) {
-	walPath, dm := setup(t, "basic.wal")
+	walPath := setup(t, "basic.wal")
 
-	w, err := wal.NewWAL(dm, walPath)
+	w, err := wal.NewWAL(walPath)
 	require.NoError(t, err)
 
 	require.NoError(t, w.AppendPut("key1", "value1"))
@@ -38,9 +35,9 @@ func TestWAL_BasicOperations(t *testing.T) {
 }
 
 func TestWAL_Replay(t *testing.T) {
-	walPath, dm := setup(t, "replay.wal")
+	walPath := setup(t, "replay.wal")
 
-	w, err := wal.NewWAL(dm, walPath)
+	w, err := wal.NewWAL(walPath)
 	require.NoError(t, err)
 
 	expected := []struct {
@@ -67,7 +64,7 @@ func TestWAL_Replay(t *testing.T) {
 	require.NoError(t, w.Close())
 
 	// Reopen WAL for replay
-	w, err = wal.NewWAL(dm, walPath)
+	w, err = wal.NewWAL(walPath)
 	require.NoError(t, err)
 
 	// Replay and verify entries
@@ -92,10 +89,10 @@ func TestWAL_Replay(t *testing.T) {
 }
 
 func TestWAL_EmptyReplay(t *testing.T) {
-	walPath, dm := setup(t, "empty.wal")
+	walPath := setup(t, "empty.wal")
 
 	// Create empty WAL
-	w, err := wal.NewWAL(dm, walPath)
+	w, err := wal.NewWAL(walPath)
 	require.NoError(t, err)
 
 	// Replay empty WAL
@@ -107,9 +104,9 @@ func TestWAL_EmptyReplay(t *testing.T) {
 }
 
 func TestWAL_LargeEntries(t *testing.T) {
-	walPath, dm := setup(t, "large.wal")
+	walPath := setup(t, "large.wal")
 
-	w, err := wal.NewWAL(dm, walPath)
+	w, err := wal.NewWAL(walPath)
 	require.NoError(t, err)
 
 	// Generate large key and value
@@ -124,7 +121,7 @@ func TestWAL_LargeEntries(t *testing.T) {
 	require.NoError(t, w.Close())
 
 	// Reopen and replay
-	w, err = wal.NewWAL(dm, walPath)
+	w, err = wal.NewWAL(walPath)
 	require.NoError(t, err)
 
 	entries, err := w.Replay()
@@ -144,24 +141,24 @@ func TestWAL_LargeEntries(t *testing.T) {
 }
 
 func TestWAL_Reopening(t *testing.T) {
-	walPath, dm := setup(t, "reopen.wal")
+	walPath := setup(t, "reopen.wal")
 
 	// Create WAL and add entries
-	w, err := wal.NewWAL(dm, walPath)
+	w, err := wal.NewWAL(walPath)
 	require.NoError(t, err)
 
 	require.NoError(t, w.AppendPut("key1", "value1"))
 	require.NoError(t, w.Close())
 
 	// Reopen and add more entries
-	w, err = wal.NewWAL(dm, walPath)
+	w, err = wal.NewWAL(walPath)
 	require.NoError(t, err)
 
 	require.NoError(t, w.AppendPut("key2", "value2"))
 	require.NoError(t, w.Close())
 
 	// Open and replay
-	w, err = wal.NewWAL(dm, walPath)
+	w, err = wal.NewWAL(walPath)
 	require.NoError(t, err)
 
 	entries, err := w.Replay()
@@ -177,9 +174,7 @@ func TestWAL_Reopening(t *testing.T) {
 }
 
 func TestWAL_InvalidPath(t *testing.T) {
-	dm := diskmanager.NewDiskManager()
-
 	// Try to create WAL in non-existent directory
-	_, err := wal.NewWAL(dm, "/nonexistent/directory/test.wal")
+	_, err := wal.NewWAL("/nonexistent/directory/test.wal")
 	assert.Error(t, err, "Expected error with invalid path, got nil")
 }

@@ -9,24 +9,22 @@ import (
 	"os"
 	"sort"
 
-	"github.com/MikhailWahib/graveldb/internal/diskmanager"
 	"github.com/MikhailWahib/graveldb/internal/shared"
 )
 
 type sstReader struct {
-	dm        diskmanager.DiskManager
-	file      diskmanager.FileHandle
+	file      *os.File
 	index     []IndexEntry
 	indexBase int64
 }
 
-func newSSTReader(dm diskmanager.DiskManager) *sstReader {
-	return &sstReader{dm: dm}
+func newSSTReader() *sstReader {
+	return &sstReader{}
 }
 
 // Open opens an existing SSTable file for reading
 func (r *sstReader) Open(filename string) error {
-	file, err := r.dm.Open(filename, os.O_RDONLY, 0)
+	file, err := os.OpenFile(filename, os.O_RDONLY, 0)
 	if err != nil {
 		return fmt.Errorf("failed to open SST file: %w", err)
 	}
@@ -73,7 +71,7 @@ func (r *sstReader) Open(filename string) error {
 		}
 
 		dataOffset := int64(binary.BigEndian.Uint64(offsetBuf))
-		index = append(index, IndexEntry{Key: entry.Key, Offset: dataOffset})
+		index = append(r.index, IndexEntry{Key: entry.Key, Offset: dataOffset})
 		offset = entry.NewOffset + 8
 	}
 

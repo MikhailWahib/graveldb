@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/MikhailWahib/graveldb/internal/diskmanager"
 	"github.com/MikhailWahib/graveldb/internal/shared"
 )
 
@@ -16,8 +15,7 @@ const (
 
 // sstWriter provides functionality to write to an SSTable
 type sstWriter struct {
-	dm        diskmanager.DiskManager
-	file      diskmanager.FileHandle
+	file      *os.File
 	index     []IndexEntry
 	offset    int64
 	indexSize int64
@@ -25,9 +23,8 @@ type sstWriter struct {
 }
 
 // newSSTWriter creates a new SSTable writer
-func newSSTWriter(dm diskmanager.DiskManager) *sstWriter {
+func newSSTWriter() *sstWriter {
 	return &sstWriter{
-		dm:     dm,
 		index:  make([]IndexEntry, 0),
 		offset: 0,
 	}
@@ -35,7 +32,7 @@ func newSSTWriter(dm diskmanager.DiskManager) *sstWriter {
 
 // Open prepares the writer for a new SSTable file
 func (w *sstWriter) Open(filename string) error {
-	file, err := w.dm.Open(filename, os.O_RDWR|os.O_CREATE, 0644)
+	file, err := os.OpenFile(filename, os.O_RDWR|os.O_CREATE, 0644)
 	if err != nil {
 		return err
 	}

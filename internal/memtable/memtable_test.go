@@ -1,31 +1,15 @@
 package memtable_test
 
 import (
-	"os"
 	"testing"
 
-	"github.com/MikhailWahib/graveldb/internal/diskmanager/mockdm"
 	"github.com/MikhailWahib/graveldb/internal/memtable"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
-func setupTempDir(t *testing.T) string {
-	t.Helper()
-	dir, err := os.MkdirTemp("", "memtable-test-*")
-	require.NoError(t, err, "failed to create temp dir")
-	return dir
-}
-
 func TestMemtable_PutAndGet(t *testing.T) {
-	dir := setupTempDir(t)
-	defer func() {
-		err := os.RemoveAll(dir)
-		require.NoError(t, err, "failed to remove temp dir")
-	}()
-
-	dm := mockdm.NewMockDiskManager()
-	mt := memtable.NewMemtable(dm)
+	mt := memtable.NewMemtable()
 
 	err := mt.Put("key1", "value1")
 	require.NoError(t, err, "Put failed")
@@ -36,14 +20,7 @@ func TestMemtable_PutAndGet(t *testing.T) {
 }
 
 func TestMemtable_Delete(t *testing.T) {
-	dir := setupTempDir(t)
-	defer func() {
-		err := os.RemoveAll(dir)
-		require.NoError(t, err, "failed to remove temp dir")
-	}()
-
-	dm := mockdm.NewMockDiskManager()
-	mt := memtable.NewMemtable(dm)
+	mt := memtable.NewMemtable()
 
 	err := mt.Put("key1", "value1")
 	require.NoError(t, err, "Put failed")
@@ -56,14 +33,7 @@ func TestMemtable_Delete(t *testing.T) {
 }
 
 func TestMemtable_Size(t *testing.T) {
-	dir := setupTempDir(t)
-	defer func() {
-		err := os.RemoveAll(dir)
-		require.NoError(t, err, "failed to remove temp dir")
-	}()
-
-	dm := mockdm.NewMockDiskManager()
-	mt := memtable.NewMemtable(dm)
+	mt := memtable.NewMemtable()
 
 	err := mt.Put("a", "1")
 	require.NoError(t, err)
@@ -80,14 +50,7 @@ func TestMemtable_Size(t *testing.T) {
 }
 
 func TestMemtable_Tombstone(t *testing.T) {
-	dir := setupTempDir(t)
-	defer func() {
-		err := os.RemoveAll(dir)
-		require.NoError(t, err, "failed to remove temp dir")
-	}()
-
-	dm := mockdm.NewMockDiskManager()
-	mt := memtable.NewMemtable(dm)
+	mt := memtable.NewMemtable()
 
 	// Try to delete a non-existent key as if it was flushed to sstable before
 	err := mt.Delete("key1")

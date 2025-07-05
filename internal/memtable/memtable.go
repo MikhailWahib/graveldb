@@ -2,10 +2,6 @@
 // providing fast access to recently written data before it is persisted to disk.
 package memtable
 
-import (
-	"github.com/MikhailWahib/graveldb/internal/diskmanager"
-)
-
 // TOMBSTONE represents a deletion marker in the memtable
 const TOMBSTONE = "TOMBSTONE"
 
@@ -32,7 +28,7 @@ type SkiplistMemtable struct {
 }
 
 // NewMemtable creates a new Memtable instance with a Write-Ahead Log (WAL).
-func NewMemtable(dm diskmanager.DiskManager) Memtable {
+func NewMemtable() Memtable {
 	return &SkiplistMemtable{
 		sl: NewSkipList(),
 	}

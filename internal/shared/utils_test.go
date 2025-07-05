@@ -6,7 +6,6 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/MikhailWahib/graveldb/internal/diskmanager/mockdm"
 	"github.com/MikhailWahib/graveldb/internal/shared"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -16,13 +15,8 @@ func TestWriteEntry(t *testing.T) {
 	dir := t.TempDir()
 	filePath := filepath.Join(dir, "test.db")
 
-	dm := mockdm.NewMockDiskManager()
-	fh, err := dm.Open(filePath, os.O_CREATE|os.O_RDWR, 0644)
+	f, err := os.OpenFile(filePath, os.O_CREATE|os.O_RDWR, 0644)
 	require.NoError(t, err)
-	defer func() {
-		_ = dm.Close(filePath)
-		_ = dm.Delete(filePath)
-	}()
 
 	key := []byte("mykey")
 	value := []byte("myvalue")
@@ -30,7 +24,7 @@ func TestWriteEntry(t *testing.T) {
 
 	// Write entry with prefix
 	newOffset, err := shared.WriteEntry(shared.Entry{
-		File:   fh,
+		File:   f,
 		Offset: offset,
 		Type:   shared.PutEntry,
 		Key:    key,
@@ -44,7 +38,7 @@ func TestWriteEntry(t *testing.T) {
 
 	// Read back the data
 	buf := make([]byte, expectedLen)
-	_, err = fh.ReadAt(buf, offset)
+	_, err = f.ReadAt(buf, offset)
 	require.NoError(t, err)
 
 	entryType := buf[0]
@@ -62,13 +56,8 @@ func TestReadEntry(t *testing.T) {
 	dir := t.TempDir()
 	filePath := filepath.Join(dir, "test.db")
 
-	dm := mockdm.NewMockDiskManager()
-	fh, err := dm.Open(filePath, os.O_CREATE|os.O_RDWR, 0644)
+	f, err := os.OpenFile(filePath, os.O_CREATE|os.O_RDWR, 0644)
 	require.NoError(t, err)
-	defer func() {
-		_ = dm.Close(filePath)
-		_ = dm.Delete(filePath)
-	}()
 
 	key := []byte("mykey")
 	value := []byte("myvalue")
@@ -76,7 +65,7 @@ func TestReadEntry(t *testing.T) {
 
 	// Write entry with prefix
 	_, err = shared.WriteEntry(shared.Entry{
-		File:   fh,
+		File:   f,
 		Offset: offset,
 		Type:   shared.DeleteEntry,
 		Key:    key,
@@ -85,7 +74,7 @@ func TestReadEntry(t *testing.T) {
 	require.NoError(t, err)
 
 	// Read the entry back
-	entry, err := shared.ReadEntry(fh, offset)
+	entry, err := shared.ReadEntry(f, offset)
 	require.NoError(t, err)
 
 	// Validate key and value
