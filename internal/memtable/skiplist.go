@@ -50,6 +50,27 @@ func NewSkipList() *SkipList {
 	}
 }
 
+type Entry struct {
+	Key   string
+	Value string
+}
+
+// Entries return all entries in the skiplist
+func (sl *SkipList) Entries() []Entry {
+	var result []Entry
+	current := sl.head.next[0]
+
+	for current != nil {
+		result = append(result, Entry{
+			Key:   current.key,
+			Value: current.value,
+		})
+		current = current.next[0]
+	}
+
+	return result
+}
+
 // randomLevel determines the level for a new node using a probabilistic model.
 func (sl *SkipList) randomLevel() int {
 	level := 1
@@ -60,7 +81,6 @@ func (sl *SkipList) randomLevel() int {
 }
 
 // Put inserts a new key-value pair into the SkipList or updates the value if the key already exists.
-// Internally, it finds the update path and adjusts pointers at each level as needed.
 func (sl *SkipList) Put(key, value string) {
 	// Create update array to store path
 	update := make([]*SkipListNode, sl.maxLevel)
@@ -194,7 +214,9 @@ func (sl *SkipList) Size() int {
 
 // Clear resets the SkipList to an empty state, retaining only the head node.
 func (sl *SkipList) Clear() {
-	sl.head = NewSkipListNode("", "", sl.maxLevel)
+	for i := range sl.head.next {
+		sl.head.next[i] = nil
+	}
 	sl.level = 1
 	sl.size = 0
 }

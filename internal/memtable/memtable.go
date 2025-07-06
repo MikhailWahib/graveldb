@@ -8,6 +8,8 @@ const TOMBSTONE = "TOMBSTONE"
 // Memtable defines the interface for an in-memory table that supports
 // basic key-value operations with durability guarantees
 type Memtable interface {
+	// Entries return all entries in the skiplist
+	Entries() []Entry
 	// Put inserts a key-value pair into the memtable and appends the operation to the Write-Ahead Log (WAL).
 	// Returns an error if the operation fails.
 	Put(key, value string) error
@@ -19,6 +21,8 @@ type Memtable interface {
 	Delete(key string) error
 	// Size returns the number of key-value pairs in the memtable.
 	Size() int
+	// Clear clears the memtable
+	Clear()
 }
 
 // SkiplistMemtable implements the Memtable interface using a skiplist
@@ -34,6 +38,10 @@ func NewMemtable() Memtable {
 	}
 }
 
+func (m *SkiplistMemtable) Entries() []Entry {
+	return m.sl.Entries()
+}
+
 // Put inserts or updates a key-value pair in the memtable
 func (m *SkiplistMemtable) Put(key, value string) error {
 	m.sl.Put(key, value)
@@ -47,15 +55,10 @@ func (m *SkiplistMemtable) Get(key string) (string, bool) {
 
 // Delete removes a key from the memtable
 func (m *SkiplistMemtable) Delete(key string) error {
-	val, ok := m.sl.Get(key)
+	val, _ := m.sl.Get(key)
 
 	// Ignore the case where the key is already deleted
 	if val == TOMBSTONE {
-		return nil
-	}
-
-	if ok {
-		m.sl.Delete(key)
 		return nil
 	}
 
@@ -66,4 +69,8 @@ func (m *SkiplistMemtable) Delete(key string) error {
 // Size returns the number of entries in the memtable
 func (m *SkiplistMemtable) Size() int {
 	return m.sl.Size()
+}
+
+func (m *SkiplistMemtable) Clear() {
+	m.sl.Clear()
 }
