@@ -99,7 +99,6 @@ func (m *Merger) Merge() error {
 	for ih.Len() > 0 {
 		item := heap.Pop(ih).(*iteratorItem)
 
-		// Skip duplicates
 		if lastKey != nil && bytes.Equal(item.key, lastKey) {
 			if item.iter.Next() {
 				heap.Push(ih, &iteratorItem{
@@ -110,6 +109,7 @@ func (m *Merger) Merge() error {
 					priority: item.priority,
 				})
 			}
+			// Skip duplicates
 			continue
 		}
 

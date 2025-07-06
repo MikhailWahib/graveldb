@@ -7,6 +7,7 @@ import (
 // SSTable provides a unified interface for SSTable operations,
 // internally delegating to SSTReader and SSTWriter
 type SSTable struct {
+	path      string
 	reader    *sstReader
 	writer    *sstWriter
 	isReading bool
@@ -14,21 +15,22 @@ type SSTable struct {
 }
 
 // NewSSTable creates a new SSTable instance
-func NewSSTable() *SSTable {
+func NewSSTable(path string) *SSTable {
 	return &SSTable{
+		path:      path,
 		isReading: false,
 		isWriting: false,
 	}
 }
 
 // OpenForRead opens an existing SSTable file in read mode
-func (sst *SSTable) OpenForRead(filename string) error {
+func (sst *SSTable) OpenForRead() error {
 	if sst.isReading || sst.isWriting {
 		return fmt.Errorf("SSTable is already open for reading or writing")
 	}
 
 	reader := newSSTReader()
-	err := reader.Open(filename)
+	err := reader.Open(sst.path)
 	if err != nil {
 		return err
 	}
@@ -39,13 +41,13 @@ func (sst *SSTable) OpenForRead(filename string) error {
 }
 
 // OpenForWrite creates a new SSTable file in write mode
-func (sst *SSTable) OpenForWrite(filename string) error {
+func (sst *SSTable) OpenForWrite() error {
 	if sst.isReading || sst.isWriting {
 		return fmt.Errorf("SSTable is already open for reading or writing")
 	}
 
 	writer := newSSTWriter()
-	err := writer.Open(filename)
+	err := writer.Open(sst.path)
 	if err != nil {
 		return err
 	}
