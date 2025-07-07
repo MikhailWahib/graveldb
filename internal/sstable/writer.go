@@ -31,8 +31,8 @@ func newSSTWriter() *sstWriter {
 }
 
 // Open prepares the writer for a new SSTable file
-func (w *sstWriter) Open(filename string) error {
-	file, err := os.OpenFile(filename, os.O_RDWR|os.O_CREATE, 0644)
+func (w *sstWriter) Open(path string) error {
+	file, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE, 0644)
 	if err != nil {
 		return err
 	}

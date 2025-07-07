@@ -120,3 +120,7 @@ func (sst *SSTable) Close() error {
 	}
 	return err
 }
+
+func (sst *SSTable) GetPath() string {
+	return sst.path
+}

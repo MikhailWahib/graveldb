@@ -2,10 +2,12 @@ package engine
 
 import (
 	"fmt"
+	"log"
 	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync/atomic"
 
 	"github.com/MikhailWahib/graveldb/internal/memtable"
 	"github.com/MikhailWahib/graveldb/internal/shared"
@@ -16,10 +18,10 @@ import (
 type Engine struct {
 	dataDir       string
 	memtable      memtable.Memtable
-	immutable     []memtable.Memtable
 	wal           *wal.WAL
 	levels        [][]*sstable.SSTable
 	compactionMgr *CompactionManager
+	sstCounter    *atomic.Uint64
 }
 
 func NewEngine(dataDir string) (*Engine, error) {
@@ -49,12 +51,16 @@ func NewEngine(dataDir string) (*Engine, error) {
 		}
 	}
 
+	var sstCount uint64
+
+	atomic.StoreUint64(&sstCount, 0)
+
 	engine := &Engine{
-		memtable:  mt,
-		immutable: make([]memtable.Memtable, 0),
-		wal:       wal,
-		levels:    make([][]*sstable.SSTable, 0),
-		dataDir:   dataDir,
+		memtable:   mt,
+		wal:        wal,
+		levels:     make([][]*sstable.SSTable, 0),
+		dataDir:    dataDir,
+		sstCounter: new(atomic.Uint64),
 	}
 
 	return engine, nil
@@ -75,6 +81,8 @@ func (e *Engine) parseLevels() error {
 	if err != nil && !os.IsNotExist(err) {
 		return err
 	}
+
+	var maxSSTNumber uint64
 
 	for _, dir := range subdirs {
 		if !dir.IsDir() || !strings.HasPrefix(dir.Name(), "L") {
@@ -102,10 +110,24 @@ func (e *Engine) parseLevels() error {
 			if file.IsDir() {
 				continue
 			}
+
+			// Extract the SSTable number from filename (assuming format like "0001.sst")
+			filename := file.Name()
+			if strings.HasSuffix(filename, ".sst") {
+				numberStr := strings.TrimSuffix(filename, ".sst")
+				if sstNum, err := strconv.ParseUint(numberStr, 10, 64); err == nil {
+					if sstNum > maxSSTNumber {
+						maxSSTNumber = sstNum
+					}
+				}
+			}
+
 			sst := sstable.NewSSTable(filepath.Join(sstDir, file.Name()))
 			e.levels[level] = append(e.levels[level], sst)
 		}
 	}
+
+	e.sstCounter.Store(maxSSTNumber)
 
 	return nil
 }
@@ -125,16 +147,45 @@ func (e *Engine) Put(key, value string) error {
 		return err
 	}
 
+	if e.memtable.Size() > MAX_MEMTABLE_SIZE {
+		old := e.memtable
+		e.memtable = memtable.NewMemtable()
+		go e.flushMemtable(old)
+	}
+
 	return nil
 }
 
 func (e *Engine) Get(key string) (string, bool) {
+	// First check memtable
 	val, found := e.memtable.Get(key)
-	if !found || val == memtable.TOMBSTONE {
-		return "", false
+	if found {
+		if val == memtable.TOMBSTONE {
+			return "", false
+		}
+		return val, true
 	}
 
-	return val, true
+	// Then search levels in order (newest first)
+	for level := range e.levels {
+		for _, sst := range e.levels[level] {
+			if err := sst.OpenForRead(); err != nil {
+				log.Printf("error opening sst: %s for read", sst.GetPath())
+				return "", false
+			}
+			defer sst.Close()
+
+			if val, err := sst.Lookup([]byte(key)); err == nil {
+				if string(val) == memtable.TOMBSTONE {
+					return "", false
+				}
+
+				return string(val), true
+			}
+		}
+	}
+
+	return "", false
 }
 
 func (e *Engine) Delete(key string) error {
@@ -147,6 +198,50 @@ func (e *Engine) Delete(key string) error {
 	if err != nil {
 		return err
 	}
+
+	return nil
+}
+
+func (e *Engine) flushMemtable(mt memtable.Memtable) error {
+	entries := mt.Entries()
+
+	l0Dir := filepath.Join(e.dataDir, "sstables", "L0")
+	if err := os.MkdirAll(l0Dir, 0755); err != nil {
+		return fmt.Errorf("failed to create L0 directory: %w", err)
+	}
+
+	// Generate unique filename using atomic counter
+	filename := fmt.Sprintf("%s/%06d.sst", l0Dir, e.sstCounter.Add(1))
+	sst := sstable.NewSSTable(filename)
+
+	// Handle potential error from OpenForWrite
+	if err := sst.OpenForWrite(); err != nil {
+		return fmt.Errorf("failed to open SSTable for writing: %w", err)
+	}
+
+	// Write all entries
+	for _, entry := range entries {
+		if err := sst.AppendPut([]byte(entry.Key), []byte(entry.Value)); err != nil {
+			return fmt.Errorf("failed to append entry to SSTable: %w", err)
+		}
+	}
+
+	if err := sst.Finish(); err != nil {
+		return fmt.Errorf("failed to finish SSTable: %w", err)
+	}
+
+	if err := sst.Close(); err != nil {
+		return fmt.Errorf("failed to close SSTable: %w", err)
+	}
+
+	// add the flushed sstable to levels
+	// ensure L0 exists in levels slice
+	if len(e.levels) == 0 {
+		e.levels = append(e.levels, []*sstable.SSTable{})
+	}
+
+	// Add the new SSTable to L0
+	e.levels[0] = append(e.levels[0], sst)
 
 	return nil
 }

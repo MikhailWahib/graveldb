@@ -4,13 +4,15 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/MikhailWahib/graveldb/internal/engine"
+	"github.com/MikhailWahib/graveldb/internal/sstable"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
-func TestEngine_PutGetDelete(t *testing.T) {
+func TestEngine_BasicPutGetDelete(t *testing.T) {
 	tmpDir := t.TempDir()
 
 	// Initialize engine
@@ -79,7 +81,7 @@ func TestEngine_OpenDB_ParseLevels(t *testing.T) {
 	require.NoError(t, err)
 
 	// Create dummy SST file
-	fakeSST := filepath.Join(levelDir, "000001.sst")
+	fakeSST := filepath.Join(levelDir, "00000001.sst")
 	err = os.WriteFile(fakeSST, []byte("placeholder"), 0644)
 	require.NoError(t, err)
 
@@ -92,4 +94,157 @@ func TestEngine_OpenDB_ParseLevels(t *testing.T) {
 	// Expect the level to be parsed
 	require.True(t, len(db.Levels()) > 0)
 	require.True(t, len(db.Levels()[0]) == 1)
+}
+
+func TestMemtableFlush(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	// Lower threshold for easier testing
+	engine.MAX_MEMTABLE_SIZE = 1 // force flush on first insert
+
+	e, err := engine.NewEngine(tmpDir)
+	require.NoError(t, err)
+
+	// Insert one key to trigger flush
+	err = e.Put("key1", "value1")
+	require.NoError(t, err)
+
+	// Wait a bit to ensure background flush finishes
+	time.Sleep(100 * time.Millisecond)
+
+	// Check SSTable file exists
+	sstPath := filepath.Join(tmpDir, "sstables", "L0", "000001.sst")
+	_, err = os.Stat(sstPath)
+	require.NoError(t, err, "Expected SSTable file to exist")
+
+	// Try to open it and read contents
+	sst := sstable.NewSSTable(sstPath)
+	err = sst.OpenForRead()
+	require.NoError(t, err)
+
+	val, err := sst.Lookup([]byte("key1"))
+	require.NoError(t, err, "Expected key1 to be found in flushed SSTable with no errors")
+	require.Equal(t, []byte("value1"), val)
+}
+
+func TestEngine_GetFromSSTable(t *testing.T) {
+	tmpDir := t.TempDir()
+	// tmpDir := filepath.Join("db")
+
+	// Force flush immediately
+	engine.MAX_MEMTABLE_SIZE = 1
+
+	db, err := engine.NewEngine(tmpDir)
+	require.NoError(t, err)
+
+	// Put key to trigger flush
+	err = db.Put("flushed_key", "flushed_value")
+	require.NoError(t, err)
+
+	// Wait for flush to complete
+	time.Sleep(100 * time.Millisecond)
+
+	engine.MAX_MEMTABLE_SIZE = 100
+
+	// Put another key in memtable
+	err = db.Put("memtable_key", "memtable_value")
+	require.NoError(t, err)
+
+	// Should find both keys
+	val, found := db.Get("flushed_key")
+	assert.True(t, found, "Should find key in SSTable")
+	assert.Equal(t, "flushed_value", val)
+
+	val, found = db.Get("memtable_key")
+	assert.True(t, found, "Should find key in memtable")
+	assert.Equal(t, "memtable_value", val)
+}
+
+func TestEngine_GetDeletedFromSSTable(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	// Force flush immediately
+	engine.MAX_MEMTABLE_SIZE = 1
+
+	db, err := engine.NewEngine(tmpDir)
+	require.NoError(t, err)
+
+	// Put and delete key to trigger flush with tombstone
+	err = db.Put("deleted_key", "some_value")
+	require.NoError(t, err)
+	err = db.Delete("deleted_key")
+	require.NoError(t, err)
+
+	// Wait for flush
+	time.Sleep(100 * time.Millisecond)
+
+	// Should not find the deleted key
+	val, found := db.Get("deleted_key")
+	assert.False(t, found, "Should not find deleted key")
+	assert.Equal(t, "", val)
+}
+
+func TestEngine_SSTCounterRestoration(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	// Create existing SSTable files
+	l0Dir := filepath.Join(tmpDir, "sstables", "L0")
+	err := os.MkdirAll(l0Dir, 0755)
+	require.NoError(t, err)
+
+	// Create files with different numbers
+	for _, num := range []string{"000003.sst", "000001.sst", "000005.sst"} {
+		err = os.WriteFile(filepath.Join(l0Dir, num), []byte("test"), 0644)
+		require.NoError(t, err)
+	}
+
+	// Initialize engine
+	db, err := engine.NewEngine(tmpDir)
+	require.NoError(t, err)
+
+	err = db.OpenDB()
+	require.NoError(t, err)
+
+	// Force flush to see next counter value
+	engine.MAX_MEMTABLE_SIZE = 1
+	err = db.Put("test_key", "test_value")
+	require.NoError(t, err)
+
+	// Wait for flush
+	time.Sleep(100 * time.Millisecond)
+
+	// Should create 000006.sst (next after highest existing 000005.sst)
+	newSSTPath := filepath.Join(l0Dir, "000006.sst")
+	_, err = os.Stat(newSSTPath)
+	require.NoError(t, err, "Expected new SSTable to have counter 000006")
+}
+
+func TestEngine_NonExistentKey(t *testing.T) {
+	// tmpDir := t.TempDir()
+	tmpDir := filepath.Join("db")
+
+	db, err := engine.NewEngine(tmpDir)
+	require.NoError(t, err)
+
+	// Try to get non-existent key
+	val, found := db.Get("nonexistent")
+	assert.False(t, found)
+	assert.Equal(t, "", val)
+
+	// Add some data and flush
+	engine.MAX_MEMTABLE_SIZE = 1
+	err = db.Put("existing", "value")
+	require.NoError(t, err)
+
+	time.Sleep(100 * time.Millisecond)
+
+	// Still shouldn't find non-existent key
+	val, found = db.Get("nonexistent")
+	assert.False(t, found)
+	assert.Equal(t, "", val)
+
+	// But should find existing key
+	val, found = db.Get("existing")
+	assert.True(t, found)
+	assert.Equal(t, "value", val)
 }
