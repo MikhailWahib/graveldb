@@ -19,7 +19,7 @@ type Memtable interface {
 	// Delete removes the key from the memtable and appends the delete operation to the Write-Ahead Log (WAL).
 	// Returns an error if the operation fails.
 	Delete(key string) error
-	// Size returns the number of key-value pairs in the memtable.
+	// Size returns the size of the memtable in bytes.
 	Size() int
 	// Clear clears the memtable
 	Clear()
@@ -53,24 +53,21 @@ func (m *SkiplistMemtable) Get(key string) (string, bool) {
 	return m.sl.Get(key)
 }
 
-// Delete removes a key from the memtable
+// Delete marks a key from the memtable as removed with TOMBSTONE
 func (m *SkiplistMemtable) Delete(key string) error {
-	val, _ := m.sl.Get(key)
-
-	// Ignore the case where the key is already deleted
-	if val == TOMBSTONE {
-		return nil
+	err := m.sl.Delete(key)
+	if err != nil {
+		return err
 	}
-
-	m.sl.Put(key, TOMBSTONE)
 	return nil
 }
 
-// Size returns the number of entries in the memtable
+// Size returns the size of entries in the skiplist in bytes
 func (m *SkiplistMemtable) Size() int {
 	return m.sl.Size()
 }
 
+// Clear clears the skiplist
 func (m *SkiplistMemtable) Clear() {
 	m.sl.Clear()
 }

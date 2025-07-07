@@ -120,7 +120,7 @@ func (sl *SkipList) Put(key, value string) {
 		update[i].next[i] = newNode
 	}
 
-	sl.size++
+	sl.size += len(key) + len(value)
 }
 
 // Get retrieves the value associated with a given key.
@@ -143,43 +143,19 @@ func (sl *SkipList) Get(key string) (string, bool) {
 
 	return "", false
 }
+func (sl *SkipList) Delete(key string) error {
+	val, _ := sl.Get(key)
 
-// Delete removes the node with the given key from the SkipList, if it exists.
-// Returns true if the key was found and deleted, otherwise returns false.
-func (sl *SkipList) Delete(key string) bool {
-	update := make([]*SkipListNode, sl.maxLevel)
-	current := sl.head
-
-	// Find predecessors at each level
-	for i := sl.level - 1; i >= 0; i-- {
-		for current.next[i] != nil && current.next[i].key < key {
-			current = current.next[i]
-		}
-		update[i] = current
+	// Ignore the case where the key is already deleted
+	if val == TOMBSTONE {
+		return nil
 	}
 
-	// Get the node at level 0
-	current = current.next[0]
+	sl.Put(key, TOMBSTONE)
 
-	if current == nil || current.key != key {
-		return false
-	}
-
-	// Remove the node from each level
-	for i := range current.next {
-		if update[i].next[i] != current {
-			break
-		}
-		update[i].next[i] = current.next[i]
-	}
-
-	// Update the list's level if needed
-	for sl.level > 1 && sl.head.next[sl.level-1] == nil {
-		sl.level--
-	}
-
-	sl.size--
-	return true
+	sl.size -= len(val)
+	sl.size += len(TOMBSTONE)
+	return nil
 }
 
 // Range returns a slice of keys in the range [start, end] (inclusive).
@@ -207,7 +183,7 @@ func (sl *SkipList) Range(start, end string) []string {
 	return result
 }
 
-// Size returns the number of key-value pairs currently stored in the SkipList.
+// Size returns the size of key-value pairs currently stored in the SkipList in bytes.
 func (sl *SkipList) Size() int {
 	return sl.size
 }

@@ -12,59 +12,50 @@ func TestMemtable_PutAndGet(t *testing.T) {
 	mt := memtable.NewMemtable()
 
 	err := mt.Put("key1", "value1")
-	require.NoError(t, err, "Put failed")
+	require.NoError(t, err)
 
 	val, ok := mt.Get("key1")
 	assert.True(t, ok, "expected key1 to exist")
-	assert.Equal(t, "value1", val, "expected value1, got different value")
+	assert.Equal(t, "value1", val, "expected value1")
 }
 
 func TestMemtable_Delete(t *testing.T) {
 	mt := memtable.NewMemtable()
 
 	err := mt.Put("key1", "value1")
-	require.NoError(t, err, "Put failed")
+	require.NoError(t, err)
 
 	err = mt.Delete("key1")
-	require.NoError(t, err, "Delete failed")
+	require.NoError(t, err)
 
-	_, ok := mt.Get("key1")
-	assert.False(t, ok, "expected key1 to be deleted")
+	val, ok := mt.Get("key1")
+	assert.True(t, ok, "expected key1 to exist after deletion")
+	assert.Equal(t, memtable.TOMBSTONE, val, "expected TOMBSTONE marker after delete")
 }
 
 func TestMemtable_Size(t *testing.T) {
 	mt := memtable.NewMemtable()
 
-	err := mt.Put("a", "1")
-	require.NoError(t, err)
-	err = mt.Put("b", "2")
-	require.NoError(t, err)
-	err = mt.Put("c", "3")
-	require.NoError(t, err)
+	require.NoError(t, mt.Put("a", "1"))
+	require.NoError(t, mt.Put("b", "2"))
+	require.NoError(t, mt.Put("c", "3"))
 
-	assert.Equal(t, 3, mt.Size(), "expected size 3")
+	assert.Equal(t, 6, mt.Size(), "expected size 6")
 
-	err = mt.Delete("b")
-	require.NoError(t, err)
-	assert.Equal(t, 2, mt.Size(), "expected size 2 after delete")
+	require.NoError(t, mt.Delete("b"))
+
+	// (3x 2bytes) - 1 byte for the deleted value + 9 bytes for TOMBSONE = 14
+	assert.Equal(t, 14, mt.Size(), "expected size 3 after logical delete")
 }
 
 func TestMemtable_Tombstone(t *testing.T) {
 	mt := memtable.NewMemtable()
+	err := mt.Put("foo", "bar")
+	require.NoError(t, err)
 
-	// Try to delete a non-existent key as if it was flushed to sstable before
-	err := mt.Delete("key1")
-	require.NoError(t, err, "Delete failed")
+	require.NoError(t, mt.Delete("foo"))
 
-	val, ok := mt.Get("key1")
-	assert.True(t, ok, "expected key1 to exist after delete")
-	assert.Equal(t, memtable.TOMBSTONE, val, "expected TOMBSTONE value")
-
-	// Try to delete the key again
-	err = mt.Delete("key1")
-	require.NoError(t, err, "Delete failed again")
-
-	val, ok = mt.Get("key1")
-	assert.True(t, ok, "expected key1 to not be deleted")
-	assert.Equal(t, memtable.TOMBSTONE, val, "expected value remains TOMBSTONE")
+	val, ok := mt.Get("foo")
+	assert.True(t, ok, "expected foo to still exist")
+	assert.Equal(t, memtable.TOMBSTONE, val, "expected foo value to be TOMBSTONE")
 }
