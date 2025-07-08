@@ -92,8 +92,8 @@ func TestEngine_OpenDB_ParseLevels(t *testing.T) {
 	require.NoError(t, err)
 
 	// Expect the level to be parsed
-	require.True(t, len(db.Levels()) > 0)
-	require.True(t, len(db.Levels()[0]) == 1)
+	require.True(t, len(db.Tiers()) > 0)
+	require.True(t, len(db.Tiers()[0]) == 1)
 }
 
 func TestMemtableFlush(t *testing.T) {
@@ -129,7 +129,6 @@ func TestMemtableFlush(t *testing.T) {
 
 func TestEngine_GetFromSSTable(t *testing.T) {
 	tmpDir := t.TempDir()
-	// tmpDir := filepath.Join("db")
 
 	// Force flush immediately
 	engine.MAX_MEMTABLE_SIZE = 1
@@ -220,8 +219,7 @@ func TestEngine_SSTCounterRestoration(t *testing.T) {
 }
 
 func TestEngine_NonExistentKey(t *testing.T) {
-	// tmpDir := t.TempDir()
-	tmpDir := filepath.Join("db")
+	tmpDir := t.TempDir()
 
 	db, err := engine.NewEngine(tmpDir)
 	require.NoError(t, err)

@@ -19,7 +19,7 @@ type Engine struct {
 	dataDir       string
 	memtable      memtable.Memtable
 	wal           *wal.WAL
-	levels        [][]*sstable.SSTable
+	tiers         [][]*sstable.SSTable
 	compactionMgr *CompactionManager
 	sstCounter    *atomic.Uint64
 }
@@ -52,13 +52,12 @@ func NewEngine(dataDir string) (*Engine, error) {
 	}
 
 	var sstCount uint64
-
 	atomic.StoreUint64(&sstCount, 0)
 
 	engine := &Engine{
 		memtable:   mt,
 		wal:        wal,
-		levels:     make([][]*sstable.SSTable, 0),
+		tiers:      make([][]*sstable.SSTable, 0),
 		dataDir:    dataDir,
 		sstCounter: new(atomic.Uint64),
 	}
@@ -67,15 +66,10 @@ func NewEngine(dataDir string) (*Engine, error) {
 }
 
 func (e *Engine) OpenDB() error {
-	err := e.parseLevels()
-	if err != nil {
-		return err
-	}
-
-	return nil
+	return e.parseTiers()
 }
 
-func (e *Engine) parseLevels() error {
+func (e *Engine) parseTiers() error {
 	sstableDir := filepath.Join(e.dataDir, "sstables")
 	subdirs, err := os.ReadDir(sstableDir)
 	if err != nil && !os.IsNotExist(err) {
@@ -89,18 +83,18 @@ func (e *Engine) parseLevels() error {
 			continue
 		}
 
-		levelStr := strings.TrimPrefix(dir.Name(), "L")
-		level, err := strconv.Atoi(levelStr)
+		tierStr := strings.TrimPrefix(dir.Name(), "L")
+		tier, err := strconv.Atoi(tierStr)
 		if err != nil {
-			return fmt.Errorf("invalid level dir name %q: %w", dir.Name(), err)
+			return fmt.Errorf("invalid tier dir name %q: %w", dir.Name(), err)
 		}
 
-		// Ensure levels slice is long enough
-		for len(e.levels) <= level {
-			e.levels = append(e.levels, nil)
+		// Ensure tiers slice is long enough
+		for len(e.tiers) <= tier {
+			e.tiers = append(e.tiers, nil)
 		}
 
-		sstDir := filepath.Join(sstableDir, fmt.Sprintf("L%d", level))
+		sstDir := filepath.Join(sstableDir, fmt.Sprintf("L%d", tier))
 		files, err := os.ReadDir(sstDir)
 		if err != nil {
 			return err
@@ -111,7 +105,6 @@ func (e *Engine) parseLevels() error {
 				continue
 			}
 
-			// Extract the SSTable number from filename (assuming format like "0001.sst")
 			filename := file.Name()
 			if strings.HasSuffix(filename, ".sst") {
 				numberStr := strings.TrimSuffix(filename, ".sst")
@@ -123,27 +116,24 @@ func (e *Engine) parseLevels() error {
 			}
 
 			sst := sstable.NewSSTable(filepath.Join(sstDir, file.Name()))
-			e.levels[level] = append(e.levels[level], sst)
+			e.tiers[tier] = append(e.tiers[tier], sst)
 		}
 	}
 
 	e.sstCounter.Store(maxSSTNumber)
-
 	return nil
 }
 
-func (e *Engine) Levels() [][]*sstable.SSTable {
-	return e.levels
+func (e *Engine) Tiers() [][]*sstable.SSTable {
+	return e.tiers
 }
 
 func (e *Engine) Put(key, value string) error {
-	err := e.wal.AppendPut(key, value)
-	if err != nil {
+	if err := e.wal.AppendPut(key, value); err != nil {
 		return err
 	}
 
-	err = e.memtable.Put(key, value)
-	if err != nil {
+	if err := e.memtable.Put(key, value); err != nil {
 		return err
 	}
 
@@ -157,7 +147,6 @@ func (e *Engine) Put(key, value string) error {
 }
 
 func (e *Engine) Get(key string) (string, bool) {
-	// First check memtable
 	val, found := e.memtable.Get(key)
 	if found {
 		if val == memtable.TOMBSTONE {
@@ -166,9 +155,9 @@ func (e *Engine) Get(key string) (string, bool) {
 		return val, true
 	}
 
-	// Then search levels in order (newest first)
-	for level := range e.levels {
-		for _, sst := range e.levels[level] {
+	// Search all tiers, newest to oldest
+	for _, tier := range e.tiers {
+		for _, sst := range tier {
 			if err := sst.OpenForRead(); err != nil {
 				log.Printf("error opening sst: %s for read", sst.GetPath())
 				return "", false
@@ -179,7 +168,6 @@ func (e *Engine) Get(key string) (string, bool) {
 				if string(val) == memtable.TOMBSTONE {
 					return "", false
 				}
-
 				return string(val), true
 			}
 		}
@@ -189,17 +177,10 @@ func (e *Engine) Get(key string) (string, bool) {
 }
 
 func (e *Engine) Delete(key string) error {
-	err := e.wal.AppendDelete(key)
-	if err != nil {
+	if err := e.wal.AppendDelete(key); err != nil {
 		return err
 	}
-
-	err = e.memtable.Delete(key)
-	if err != nil {
-		return err
-	}
-
-	return nil
+	return e.memtable.Delete(key)
 }
 
 func (e *Engine) flushMemtable(mt memtable.Memtable) error {
@@ -210,16 +191,13 @@ func (e *Engine) flushMemtable(mt memtable.Memtable) error {
 		return fmt.Errorf("failed to create L0 directory: %w", err)
 	}
 
-	// Generate unique filename using atomic counter
 	filename := fmt.Sprintf("%s/%06d.sst", l0Dir, e.sstCounter.Add(1))
 	sst := sstable.NewSSTable(filename)
 
-	// Handle potential error from OpenForWrite
 	if err := sst.OpenForWrite(); err != nil {
 		return fmt.Errorf("failed to open SSTable for writing: %w", err)
 	}
 
-	// Write all entries
 	for _, entry := range entries {
 		if err := sst.AppendPut([]byte(entry.Key), []byte(entry.Value)); err != nil {
 			return fmt.Errorf("failed to append entry to SSTable: %w", err)
@@ -234,14 +212,12 @@ func (e *Engine) flushMemtable(mt memtable.Memtable) error {
 		return fmt.Errorf("failed to close SSTable: %w", err)
 	}
 
-	// add the flushed sstable to levels
-	// ensure L0 exists in levels slice
-	if len(e.levels) == 0 {
-		e.levels = append(e.levels, []*sstable.SSTable{})
+	// Ensure T0 exists
+	if len(e.tiers) == 0 {
+		e.tiers = append(e.tiers, []*sstable.SSTable{})
 	}
 
-	// Add the new SSTable to L0
-	e.levels[0] = append(e.levels[0], sst)
-
+	// Add the SST to T0
+	e.tiers[0] = append(e.tiers[0], sst)
 	return nil
 }
