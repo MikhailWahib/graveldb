@@ -101,7 +101,7 @@ func TestMemtableFlush(t *testing.T) {
 	tmpDir := t.TempDir()
 
 	// Lower threshold for easier testing
-	engine.MAX_MEMTABLE_SIZE = 1 // force flush on first insert
+	engine.MaxMemtableSize = 1 // force flush on first insert
 
 	e, err := engine.NewEngine(tmpDir)
 	require.NoError(t, err)
@@ -135,7 +135,7 @@ func TestEngine_GetFromSSTable(t *testing.T) {
 	tmpDir := t.TempDir()
 
 	// Force flush immediately
-	engine.MAX_MEMTABLE_SIZE = 1
+	engine.MaxMemtableSize = 1
 
 	e, err := engine.NewEngine(tmpDir)
 	require.NoError(t, err)
@@ -150,7 +150,7 @@ func TestEngine_GetFromSSTable(t *testing.T) {
 	// Wait for flush to complete
 	time.Sleep(100 * time.Millisecond)
 
-	engine.MAX_MEMTABLE_SIZE = 100
+	engine.MaxMemtableSize = 100
 
 	// Put another key in memtable
 	err = e.Put("memtable_key", "memtable_value")
@@ -170,7 +170,7 @@ func TestEngine_GetDeletedFromSSTable(t *testing.T) {
 	tmpDir := t.TempDir()
 
 	// Force flush immediately
-	engine.MAX_MEMTABLE_SIZE = 1
+	engine.MaxMemtableSize = 1
 
 	e, err := engine.NewEngine(tmpDir)
 	require.NoError(t, err)
@@ -215,7 +215,7 @@ func TestEngine_SSTCounterRestoration(t *testing.T) {
 	require.NoError(t, err)
 
 	// Force flush to see next counter value
-	engine.MAX_MEMTABLE_SIZE = 1
+	engine.MaxMemtableSize = 1
 	err = e.Put("test_key", "test_value")
 	require.NoError(t, err)
 
@@ -243,7 +243,7 @@ func TestEngine_NonExistentKey(t *testing.T) {
 	assert.Equal(t, "", val)
 
 	// Add some data and flush
-	engine.MAX_MEMTABLE_SIZE = 1
+	engine.MaxMemtableSize = 1
 	err = e.Put("existing", "value")
 	require.NoError(t, err)
 
@@ -263,8 +263,8 @@ func TestEngine_NonExistentKey(t *testing.T) {
 func Test_ReadLatestFromMultipleSSTsInOneTier(t *testing.T) {
 	tmpDir := t.TempDir()
 	// tmpDir := "db"
-	engine.MAX_MEMTABLE_SIZE = 1
-	engine.MAX_TABLES_PER_TIER = 4
+	engine.MaxMemtableSize = 1
+	engine.MaxTablesPerTier = 4
 
 	e, err := engine.NewEngine(tmpDir)
 	require.NoError(t, err)
@@ -289,8 +289,8 @@ func Test_ReadLatestFromMultipleSSTsInOneTier(t *testing.T) {
 
 func TestCompaction_TriggersWhenThresholdExceeded(t *testing.T) {
 	tmpDir := t.TempDir()
-	engine.MAX_MEMTABLE_SIZE = 1
-	engine.MAX_TABLES_PER_TIER = 2
+	engine.MaxMemtableSize = 1
+	engine.MaxTablesPerTier = 2
 
 	e, err := engine.NewEngine(tmpDir)
 	require.NoError(t, err)
@@ -311,8 +311,8 @@ func TestCompaction_TriggersWhenThresholdExceeded(t *testing.T) {
 
 func TestCompaction_MergedOutputContainsLatestValues(t *testing.T) {
 	tmpDir := t.TempDir()
-	engine.MAX_MEMTABLE_SIZE = 1
-	engine.MAX_TABLES_PER_TIER = 1
+	engine.MaxMemtableSize = 1
+	engine.MaxTablesPerTier = 1
 
 	e, err := engine.NewEngine(tmpDir)
 	require.NoError(t, err)
@@ -334,8 +334,8 @@ func TestCompaction_MergedOutputContainsLatestValues(t *testing.T) {
 
 func TestCompaction_RespectsDeletes(t *testing.T) {
 	tmpDir := t.TempDir()
-	engine.MAX_MEMTABLE_SIZE = 1
-	engine.MAX_TABLES_PER_TIER = 2
+	engine.MaxMemtableSize = 1
+	engine.MaxTablesPerTier = 2
 
 	e, err := engine.NewEngine(tmpDir)
 	require.NoError(t, err)
@@ -355,8 +355,8 @@ func TestCompaction_RespectsDeletes(t *testing.T) {
 
 func TestCompaction_DeletesOldSSTables(t *testing.T) {
 	tmpDir := t.TempDir()
-	engine.MAX_MEMTABLE_SIZE = 1
-	engine.MAX_TABLES_PER_TIER = 2
+	engine.MaxMemtableSize = 1
+	engine.MaxTablesPerTier = 2
 
 	e, err := engine.NewEngine(tmpDir)
 	require.NoError(t, err)
@@ -377,8 +377,8 @@ func TestCompaction_DeletesOldSSTables(t *testing.T) {
 
 func TestCompaction_WritesToCorrectTier(t *testing.T) {
 	tmpDir := t.TempDir()
-	engine.MAX_MEMTABLE_SIZE = 1
-	engine.MAX_TABLES_PER_TIER = 2
+	engine.MaxMemtableSize = 1
+	engine.MaxTablesPerTier = 2
 
 	e, err := engine.NewEngine(tmpDir)
 	require.NoError(t, err)
@@ -401,8 +401,8 @@ func TestCompaction_WritesToCorrectTier(t *testing.T) {
 
 func TestCompaction_CreatesValidMergedSSTable(t *testing.T) {
 	tmpDir := t.TempDir()
-	engine.MAX_MEMTABLE_SIZE = 1
-	engine.MAX_TABLES_PER_TIER = 2
+	engine.MaxMemtableSize = 1
+	engine.MaxTablesPerTier = 2
 
 	e, err := engine.NewEngine(tmpDir)
 	require.NoError(t, err)

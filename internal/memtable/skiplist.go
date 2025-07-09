@@ -50,6 +50,7 @@ func NewSkipList() *SkipList {
 	}
 }
 
+// Entry represents a key-value pair in the skiplist.
 type Entry struct {
 	Key   string
 	Value string
@@ -143,6 +144,8 @@ func (sl *SkipList) Get(key string) (string, bool) {
 
 	return "", false
 }
+
+// Delete marks a key as deleted in the skiplist by setting its value to TOMBSTONE.
 func (sl *SkipList) Delete(key string) error {
 	val, _ := sl.Get(key)
 

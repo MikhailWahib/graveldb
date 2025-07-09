@@ -1,3 +1,4 @@
+// Package engine implements the core storage engine, including compaction and tier management.
 package engine
 
 import (
@@ -8,6 +9,7 @@ import (
 	"github.com/MikhailWahib/graveldb/internal/sstable"
 )
 
+// CompactionManager manages the compaction process for SSTable tiers.
 type CompactionManager struct {
 	tiers      *[][]*sstable.SSTable
 	merger     sstable.Merger
@@ -15,12 +17,13 @@ type CompactionManager struct {
 	dataDir    string
 }
 
+// NewCompactionManager creates a new CompactionManager for the given data directory and tiers.
 func NewCompactionManager(dataDir string, tiers *[][]*sstable.SSTable, sstCounter *atomic.Uint64) *CompactionManager {
 	return &CompactionManager{dataDir: dataDir, tiers: tiers, merger: *sstable.NewMerger(), sstCounter: sstCounter}
 }
 
 func (cm *CompactionManager) shouldCompactTier(tier int) bool {
-	return len((*cm.tiers)[tier]) > MAX_TABLES_PER_TIER
+	return len((*cm.tiers)[tier]) > MaxTablesPerTier
 }
 
 func (cm *CompactionManager) generateOutputPath(tier int) string {
@@ -61,7 +64,9 @@ func (cm *CompactionManager) compactTier(tier int) error {
 
 	// Add sources to merger
 	for _, sst := range inputs {
-		cm.merger.AddSource(sst)
+		if err := cm.merger.AddSource(sst); err != nil {
+			return err
+		}
 		if err := sst.OpenForRead(); err != nil {
 			return err
 		}
@@ -85,6 +90,6 @@ func (cm *CompactionManager) compactTier(tier int) error {
 	(*cm.tiers)[tier] = []*sstable.SSTable{}
 	(*cm.tiers)[tier+1] = append((*cm.tiers)[tier+1], output)
 
-	cm.merger.Clear()
+	cm.merger.Reset()
 	return nil
 }

@@ -38,6 +38,7 @@ func NewMemtable() Memtable {
 	}
 }
 
+// Entries returns all entries in the skiplist memtable.
 func (m *SkiplistMemtable) Entries() []Entry {
 	return m.sl.Entries()
 }

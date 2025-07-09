@@ -122,10 +122,12 @@ func (sst *SSTable) Close() error {
 	return err
 }
 
+// Delete removes the SSTable file from disk.
 func (sst *SSTable) Delete() error {
 	return os.Remove(sst.GetPath())
 }
 
+// GetPath returns the file path of the SSTable.
 func (sst *SSTable) GetPath() string {
 	return sst.path
 }

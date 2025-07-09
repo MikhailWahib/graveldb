@@ -15,6 +15,7 @@ import (
 	"github.com/MikhailWahib/graveldb/internal/wal"
 )
 
+// Engine is the main database engine, managing memtable, WAL, SSTables, and compaction.
 type Engine struct {
 	dataDir       string
 	memtable      memtable.Memtable
@@ -24,6 +25,7 @@ type Engine struct {
 	sstCounter    *atomic.Uint64
 }
 
+// NewEngine creates a new Engine instance for the given data directory.
 func NewEngine(dataDir string) (*Engine, error) {
 	err := os.MkdirAll(dataDir, 0755)
 	if err != nil {
@@ -45,9 +47,13 @@ func NewEngine(dataDir string) (*Engine, error) {
 	for _, e := range entries {
 		switch e.Type {
 		case shared.PutEntry:
-			mt.Put(e.Key, e.Value)
+			if err := mt.Put(e.Key, e.Value); err != nil {
+				return nil, err
+			}
 		case shared.DeleteEntry:
-			mt.Delete(e.Key)
+			if err := mt.Delete(e.Key); err != nil {
+				return nil, err
+			}
 		}
 	}
 
@@ -65,6 +71,7 @@ func NewEngine(dataDir string) (*Engine, error) {
 	return engine, nil
 }
 
+// OpenDB initializes the compaction manager and parses existing SSTables.
 func (e *Engine) OpenDB() error {
 	compactionMgr := NewCompactionManager(e.dataDir, &e.tiers, e.sstCounter)
 	e.compactionMgr = compactionMgr
@@ -72,6 +79,7 @@ func (e *Engine) OpenDB() error {
 	return e.parseTiers()
 }
 
+// parseTiers scans the SSTable directory and populates the engine's tier structure.
 func (e *Engine) parseTiers() error {
 	sstableDir := filepath.Join(e.dataDir, "sstables")
 	subdirs, err := os.ReadDir(sstableDir)
@@ -127,10 +135,12 @@ func (e *Engine) parseTiers() error {
 	return nil
 }
 
+// Tiers returns the current SSTable tiers managed by the engine.
 func (e *Engine) Tiers() [][]*sstable.SSTable {
 	return e.tiers
 }
 
+// Put inserts or updates a key-value pair in the database.
 func (e *Engine) Put(key, value string) error {
 	if err := e.wal.AppendPut(key, value); err != nil {
 		return err
@@ -140,15 +150,20 @@ func (e *Engine) Put(key, value string) error {
 		return err
 	}
 
-	if e.memtable.Size() > MAX_MEMTABLE_SIZE {
+	if e.memtable.Size() > MaxMemtableSize {
 		old := e.memtable
 		e.memtable = memtable.NewMemtable()
-		go e.flushMemtable(old)
+		go func() {
+			if err := e.flushMemtable(old); err != nil {
+				log.Printf("flushMemtable error: %v", err)
+			}
+		}()
 	}
 
 	return nil
 }
 
+// Get retrieves the value for a given key, searching memtable and all SSTable tiers.
 func (e *Engine) Get(key string) (string, bool) {
 	val, found := e.memtable.Get(key)
 	if found {
@@ -165,7 +180,12 @@ func (e *Engine) Get(key string) (string, bool) {
 				log.Printf("error opening sst: %s for read", tier[i].GetPath())
 				return "", false
 			}
-			defer tier[i].Close()
+			closer := tier[i]
+			defer func() {
+				if err := closer.Close(); err != nil {
+					log.Printf("error closing sst: %s: %v", closer.GetPath(), err)
+				}
+			}()
 
 			if val, err := tier[i].Lookup([]byte(key)); err == nil {
 				if string(val) == memtable.TOMBSTONE {
@@ -179,6 +199,7 @@ func (e *Engine) Get(key string) (string, bool) {
 	return "", false
 }
 
+// Delete removes a key from the database.
 func (e *Engine) Delete(key string) error {
 	if err := e.wal.AppendDelete(key); err != nil {
 		return err
@@ -186,6 +207,7 @@ func (e *Engine) Delete(key string) error {
 	return e.memtable.Delete(key)
 }
 
+// flushMemtable writes the contents of a memtable to a new SSTable on disk.
 func (e *Engine) flushMemtable(mt memtable.Memtable) error {
 	entries := mt.Entries()
 

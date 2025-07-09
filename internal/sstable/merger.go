@@ -141,7 +141,8 @@ func (m *Merger) Merge() error {
 	return m.output.Finish()
 }
 
-func (m *Merger) Clear() {
+// Reset clears the merger
+func (m *Merger) Reset() {
 	m.sources = make([]*SSTable, 0)
 	m.output = nil
 }
