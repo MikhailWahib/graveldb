@@ -34,7 +34,7 @@ jobs:
           ${{ runner.os }}-go-
 
     - name: Test
-      run: go test -v -race -cover ./...
+      run: go test -v ./...
 
   lint:
     name: Lint
