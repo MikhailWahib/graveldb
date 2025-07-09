@@ -26,53 +26,46 @@ type Engine struct {
 }
 
 // NewEngine creates a new Engine instance for the given data directory.
-func NewEngine(dataDir string) (*Engine, error) {
-	err := os.MkdirAll(dataDir, 0755)
-	if err != nil {
-		return nil, err
-	}
-
-	wal, err := wal.NewWAL(dataDir + "/wal.log")
-	if err != nil {
-		return nil, err
-	}
-
-	mt := memtable.NewMemtable()
-
-	entries, err := wal.Replay()
-	if err != nil {
-		return nil, err
-	}
-
-	for _, e := range entries {
-		switch e.Type {
-		case shared.PutEntry:
-			if err := mt.Put(e.Key, e.Value); err != nil {
-				return nil, err
-			}
-		case shared.DeleteEntry:
-			if err := mt.Delete(e.Key); err != nil {
-				return nil, err
-			}
-		}
-	}
-
-	var sstCount uint64
-	atomic.StoreUint64(&sstCount, 0)
-
-	engine := &Engine{
-		memtable:   mt,
-		wal:        wal,
+func NewEngine() *Engine {
+	return &Engine{
+		memtable:   memtable.NewMemtable(),
 		tiers:      make([][]*sstable.SSTable, 0),
-		dataDir:    dataDir,
 		sstCounter: new(atomic.Uint64),
 	}
-
-	return engine, nil
 }
 
 // OpenDB initializes the compaction manager and parses existing SSTables.
-func (e *Engine) OpenDB() error {
+func (e *Engine) OpenDB(dataDir string) error {
+	err := os.MkdirAll(dataDir, 0755)
+	if err != nil {
+		return err
+	}
+	e.dataDir = dataDir
+
+	wal, err := wal.NewWAL(dataDir + "/wal.log")
+	if err != nil {
+		return err
+	}
+
+	entries, err := wal.Replay()
+	if err != nil {
+		return err
+	}
+
+	for _, entry := range entries {
+		switch entry.Type {
+		case shared.PutEntry:
+			if err := e.memtable.Put(entry.Key, entry.Value); err != nil {
+				return err
+			}
+		case shared.DeleteEntry:
+			if err := e.memtable.Delete(entry.Key); err != nil {
+				return err
+			}
+		}
+	}
+	e.wal = wal
+
 	compactionMgr := NewCompactionManager(e.dataDir, &e.tiers, e.sstCounter)
 	e.compactionMgr = compactionMgr
 

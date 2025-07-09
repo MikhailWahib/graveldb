@@ -17,7 +17,8 @@ func TestEngine_BasicPutGetDelete(t *testing.T) {
 	tmpDir := t.TempDir()
 
 	// Initialize engine
-	e, err := engine.NewEngine(tmpDir)
+	e := engine.NewEngine()
+	err := e.OpenDB(tmpDir)
 	require.NoError(t, err)
 
 	// Insert some keys
@@ -49,7 +50,8 @@ func TestEngine_WALReplay(t *testing.T) {
 
 	func() {
 		// Create engine and write entries
-		e, err := engine.NewEngine(tmpDir)
+		e := engine.NewEngine()
+		err := e.OpenDB(tmpDir)
 		require.NoError(t, err)
 
 		err = e.Put("a", "1")
@@ -61,7 +63,8 @@ func TestEngine_WALReplay(t *testing.T) {
 	}()
 
 	// Simulate restart (replay WAL)
-	db2, err := engine.NewEngine(tmpDir)
+	db2 := engine.NewEngine()
+	err := db2.OpenDB(tmpDir)
 	require.NoError(t, err)
 
 	val, found := db2.Get("a")
@@ -86,10 +89,8 @@ func TestEngine_OpenDB_ParseLevels(t *testing.T) {
 	err = os.WriteFile(fakeSST, []byte("placeholder"), 0644)
 	require.NoError(t, err)
 
-	e, err := engine.NewEngine(tmpDir)
-	require.NoError(t, err)
-
-	err = e.OpenDB()
+	e := engine.NewEngine()
+	err = e.OpenDB(tmpDir)
 	require.NoError(t, err)
 
 	// Expect the level to be parsed
@@ -103,10 +104,8 @@ func TestMemtableFlush(t *testing.T) {
 	// Lower threshold for easier testing
 	engine.MaxMemtableSize = 1 // force flush on first insert
 
-	e, err := engine.NewEngine(tmpDir)
-	require.NoError(t, err)
-
-	err = e.OpenDB()
+	e := engine.NewEngine()
+	err := e.OpenDB(tmpDir)
 	require.NoError(t, err)
 
 	// Insert one key to trigger flush
@@ -137,10 +136,8 @@ func TestEngine_GetFromSSTable(t *testing.T) {
 	// Force flush immediately
 	engine.MaxMemtableSize = 1
 
-	e, err := engine.NewEngine(tmpDir)
-	require.NoError(t, err)
-
-	err = e.OpenDB()
+	e := engine.NewEngine()
+	err := e.OpenDB(tmpDir)
 	require.NoError(t, err)
 
 	// Put key to trigger flush
@@ -172,10 +169,8 @@ func TestEngine_GetDeletedFromSSTable(t *testing.T) {
 	// Force flush immediately
 	engine.MaxMemtableSize = 1
 
-	e, err := engine.NewEngine(tmpDir)
-	require.NoError(t, err)
-
-	err = e.OpenDB()
+	e := engine.NewEngine()
+	err := e.OpenDB(tmpDir)
 	require.NoError(t, err)
 
 	// Put and delete key to trigger flush with tombstone
@@ -203,15 +198,13 @@ func TestEngine_SSTCounterRestoration(t *testing.T) {
 
 	// Create files with different numbers
 	for _, num := range []string{"000003.sst", "000001.sst", "000005.sst"} {
-		err = os.WriteFile(filepath.Join(t0Dir, num), []byte("test"), 0644)
+		err := os.WriteFile(filepath.Join(t0Dir, num), []byte("test"), 0644)
 		require.NoError(t, err)
 	}
 
 	// Initialize engine
-	e, err := engine.NewEngine(tmpDir)
-	require.NoError(t, err)
-
-	err = e.OpenDB()
+	e := engine.NewEngine()
+	err = e.OpenDB(tmpDir)
 	require.NoError(t, err)
 
 	// Force flush to see next counter value
@@ -230,11 +223,8 @@ func TestEngine_SSTCounterRestoration(t *testing.T) {
 
 func TestEngine_NonExistentKey(t *testing.T) {
 	tmpDir := t.TempDir()
-
-	e, err := engine.NewEngine(tmpDir)
-	require.NoError(t, err)
-
-	err = e.OpenDB()
+	e := engine.NewEngine()
+	err := e.OpenDB(tmpDir)
 	require.NoError(t, err)
 
 	// Try to get non-existent key
@@ -262,13 +252,12 @@ func TestEngine_NonExistentKey(t *testing.T) {
 
 func Test_ReadLatestFromMultipleSSTsInOneTier(t *testing.T) {
 	tmpDir := t.TempDir()
-	// tmpDir := "db"
 	engine.MaxMemtableSize = 1
 	engine.MaxTablesPerTier = 4
 
-	e, err := engine.NewEngine(tmpDir)
+	e := engine.NewEngine()
+	err := e.OpenDB(tmpDir)
 	require.NoError(t, err)
-	require.NoError(t, e.OpenDB())
 
 	for i := range 2 {
 		key := fmt.Sprintf("key%d", i)
@@ -283,7 +272,6 @@ func Test_ReadLatestFromMultipleSSTsInOneTier(t *testing.T) {
 
 	val, found := e.Get("key0")
 	require.True(t, found)
-
 	require.Equal(t, val, "new")
 }
 
@@ -292,9 +280,9 @@ func TestCompaction_TriggersWhenThresholdExceeded(t *testing.T) {
 	engine.MaxMemtableSize = 1
 	engine.MaxTablesPerTier = 2
 
-	e, err := engine.NewEngine(tmpDir)
+	e := engine.NewEngine()
+	err := e.OpenDB(tmpDir)
 	require.NoError(t, err)
-	require.NoError(t, e.OpenDB())
 
 	for i := range 3 {
 		key := fmt.Sprintf("key%d", i)
@@ -314,9 +302,9 @@ func TestCompaction_MergedOutputContainsLatestValues(t *testing.T) {
 	engine.MaxMemtableSize = 1
 	engine.MaxTablesPerTier = 1
 
-	e, err := engine.NewEngine(tmpDir)
+	e := engine.NewEngine()
+	err := e.OpenDB(tmpDir)
 	require.NoError(t, err)
-	require.NoError(t, e.OpenDB())
 
 	// Write initial value
 	require.NoError(t, e.Put("a", "old"))
@@ -337,9 +325,9 @@ func TestCompaction_RespectsDeletes(t *testing.T) {
 	engine.MaxMemtableSize = 1
 	engine.MaxTablesPerTier = 2
 
-	e, err := engine.NewEngine(tmpDir)
+	e := engine.NewEngine()
+	err := e.OpenDB(tmpDir)
 	require.NoError(t, err)
-	require.NoError(t, e.OpenDB())
 
 	require.NoError(t, e.Put("x", "1"))
 	time.Sleep(50 * time.Millisecond)
@@ -358,9 +346,9 @@ func TestCompaction_DeletesOldSSTables(t *testing.T) {
 	engine.MaxMemtableSize = 1
 	engine.MaxTablesPerTier = 2
 
-	e, err := engine.NewEngine(tmpDir)
+	e := engine.NewEngine()
+	err := e.OpenDB(tmpDir)
 	require.NoError(t, err)
-	require.NoError(t, e.OpenDB())
 
 	for i := range 3 {
 		require.NoError(t, e.Put(fmt.Sprintf("k%d", i), fmt.Sprintf("v%d", i)))
@@ -380,9 +368,9 @@ func TestCompaction_WritesToCorrectTier(t *testing.T) {
 	engine.MaxMemtableSize = 1
 	engine.MaxTablesPerTier = 2
 
-	e, err := engine.NewEngine(tmpDir)
+	e := engine.NewEngine()
+	err := e.OpenDB(tmpDir)
 	require.NoError(t, err)
-	require.NoError(t, e.OpenDB())
 
 	for i := range 4 {
 		require.NoError(t, e.Put(fmt.Sprintf("k%d", i), fmt.Sprintf("v%d", i)))
@@ -404,9 +392,9 @@ func TestCompaction_CreatesValidMergedSSTable(t *testing.T) {
 	engine.MaxMemtableSize = 1
 	engine.MaxTablesPerTier = 2
 
-	e, err := engine.NewEngine(tmpDir)
+	e := engine.NewEngine()
+	err := e.OpenDB(tmpDir)
 	require.NoError(t, err)
-	require.NoError(t, e.OpenDB())
 
 	require.NoError(t, e.Put("z", "last"))
 	time.Sleep(100 * time.Millisecond)
