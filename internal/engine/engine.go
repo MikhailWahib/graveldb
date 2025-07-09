@@ -66,6 +66,9 @@ func NewEngine(dataDir string) (*Engine, error) {
 }
 
 func (e *Engine) OpenDB() error {
+	compactionMgr := NewCompactionManager(e.dataDir, &e.tiers, e.sstCounter)
+	e.compactionMgr = compactionMgr
+
 	return e.parseTiers()
 }
 
@@ -79,11 +82,11 @@ func (e *Engine) parseTiers() error {
 	var maxSSTNumber uint64
 
 	for _, dir := range subdirs {
-		if !dir.IsDir() || !strings.HasPrefix(dir.Name(), "L") {
+		if !dir.IsDir() || !strings.HasPrefix(dir.Name(), "T") {
 			continue
 		}
 
-		tierStr := strings.TrimPrefix(dir.Name(), "L")
+		tierStr := strings.TrimPrefix(dir.Name(), "T")
 		tier, err := strconv.Atoi(tierStr)
 		if err != nil {
 			return fmt.Errorf("invalid tier dir name %q: %w", dir.Name(), err)
@@ -94,7 +97,7 @@ func (e *Engine) parseTiers() error {
 			e.tiers = append(e.tiers, nil)
 		}
 
-		sstDir := filepath.Join(sstableDir, fmt.Sprintf("L%d", tier))
+		sstDir := filepath.Join(sstableDir, fmt.Sprintf("T%d", tier))
 		files, err := os.ReadDir(sstDir)
 		if err != nil {
 			return err
@@ -157,14 +160,14 @@ func (e *Engine) Get(key string) (string, bool) {
 
 	// Search all tiers, newest to oldest
 	for _, tier := range e.tiers {
-		for _, sst := range tier {
-			if err := sst.OpenForRead(); err != nil {
-				log.Printf("error opening sst: %s for read", sst.GetPath())
+		for i := len(tier) - 1; i >= 0; i-- {
+			if err := tier[i].OpenForRead(); err != nil {
+				log.Printf("error opening sst: %s for read", tier[i].GetPath())
 				return "", false
 			}
-			defer sst.Close()
+			defer tier[i].Close()
 
-			if val, err := sst.Lookup([]byte(key)); err == nil {
+			if val, err := tier[i].Lookup([]byte(key)); err == nil {
 				if string(val) == memtable.TOMBSTONE {
 					return "", false
 				}
@@ -186,9 +189,9 @@ func (e *Engine) Delete(key string) error {
 func (e *Engine) flushMemtable(mt memtable.Memtable) error {
 	entries := mt.Entries()
 
-	l0Dir := filepath.Join(e.dataDir, "sstables", "L0")
+	l0Dir := filepath.Join(e.dataDir, "sstables", "T0")
 	if err := os.MkdirAll(l0Dir, 0755); err != nil {
-		return fmt.Errorf("failed to create L0 directory: %w", err)
+		return fmt.Errorf("failed to create T0 directory: %w", err)
 	}
 
 	filename := fmt.Sprintf("%s/%06d.sst", l0Dir, e.sstCounter.Add(1))
@@ -212,12 +215,22 @@ func (e *Engine) flushMemtable(mt memtable.Memtable) error {
 		return fmt.Errorf("failed to close SSTable: %w", err)
 	}
 
-	// Ensure T0 exists
+	// Ensure tier 0 exists
 	if len(e.tiers) == 0 {
 		e.tiers = append(e.tiers, []*sstable.SSTable{})
 	}
 
-	// Add the SST to T0
+	// Append SST to T0
 	e.tiers[0] = append(e.tiers[0], sst)
+
+	// Run compaction on T0 if needed
+	if e.compactionMgr.shouldCompactTier(0) {
+		go func() {
+			if err := e.compactionMgr.compactTierRecursive(0); err != nil {
+				log.Printf("compaction error: %v", err)
+			}
+		}()
+	}
+
 	return nil
 }

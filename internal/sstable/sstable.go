@@ -2,6 +2,7 @@ package sstable
 
 import (
 	"fmt"
+	"os"
 )
 
 // SSTable provides a unified interface for SSTable operations,
@@ -119,6 +120,10 @@ func (sst *SSTable) Close() error {
 		sst.writer = nil
 	}
 	return err
+}
+
+func (sst *SSTable) Delete() error {
+	return os.Remove(sst.GetPath())
 }
 
 func (sst *SSTable) GetPath() string {

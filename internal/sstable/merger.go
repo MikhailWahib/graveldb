@@ -67,7 +67,7 @@ func (h *iteratorHeap) Pop() any {
 	return item
 }
 
-// Merge performs the actual merge operation
+// Merge performs the actual merge operation and writes the output SST to disk
 func (m *Merger) Merge() error {
 	if m.output == nil {
 		return fmt.Errorf("merger: output SSTable not set")
@@ -139,4 +139,9 @@ func (m *Merger) Merge() error {
 	}
 
 	return m.output.Finish()
+}
+
+func (m *Merger) Clear() {
+	m.sources = make([]*SSTable, 0)
+	m.output = nil
 }

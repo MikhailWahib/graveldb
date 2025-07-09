@@ -259,6 +259,30 @@ func TestNonExistentKeyLookup(t *testing.T) {
 	require.NoError(t, sst.Close())
 }
 
+func Test_DeleteSST(t *testing.T) {
+	tempDir := t.TempDir()
+	sstPath := filepath.Join(tempDir, "delete-test.sst")
+
+	sst := sstable.NewSSTable(sstPath)
+	err := sst.OpenForWrite()
+	require.NoError(t, err)
+
+	err = sst.AppendPut([]byte("key"), []byte("value"))
+	require.NoError(t, err)
+
+	err = sst.Finish()
+	require.NoError(t, err)
+
+	// Delete the table
+	err = sst.Delete()
+	require.NoError(t, err)
+
+	// Attempt to read the SSTable
+	sst = sstable.NewSSTable(sstPath)
+	err = sst.OpenForRead()
+	require.Error(t, err)
+}
+
 func TestSSTableIterator(t *testing.T) {
 	tempDir := t.TempDir()
 	sstPath := filepath.Join(tempDir, "test_iterator.sst")
