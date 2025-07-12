@@ -4,40 +4,40 @@ package engine
 import (
 	"fmt"
 	"os"
-	"sync/atomic"
 
 	"github.com/MikhailWahib/graveldb/internal/sstable"
 )
 
 // CompactionManager manages the compaction process for SSTable tiers.
 type CompactionManager struct {
-	tiers      *[][]*sstable.SSTable
-	merger     sstable.Merger
-	sstCounter *atomic.Uint64
-	dataDir    string
+	engine *Engine
+	merger *sstable.Merger
 }
 
 // NewCompactionManager creates a new CompactionManager for the given data directory and tiers.
-func NewCompactionManager(dataDir string, tiers *[][]*sstable.SSTable, sstCounter *atomic.Uint64) *CompactionManager {
-	return &CompactionManager{dataDir: dataDir, tiers: tiers, merger: *sstable.NewMerger(), sstCounter: sstCounter}
+func NewCompactionManager(e *Engine) *CompactionManager {
+	return &CompactionManager{
+		engine: e,
+		merger: sstable.NewMerger(),
+	}
 }
 
 func (cm *CompactionManager) shouldCompactTier(tier int) bool {
-	return len((*cm.tiers)[tier]) > MaxTablesPerTier
+	return len(cm.engine.tiers[tier]) > cm.engine.maxTablesPerTier
 }
 
 func (cm *CompactionManager) generateOutputPath(tier int) string {
-	outputDir := fmt.Sprintf("%s/sstables/T%d", cm.dataDir, tier)
+	outputDir := fmt.Sprintf("%s/sstables/T%d", cm.engine.dataDir, tier)
 	err := os.MkdirAll(outputDir, 0755)
 	if err != nil {
 		return ""
 	}
 
-	return fmt.Sprintf("%s/%06d.sst", outputDir, cm.sstCounter.Load())
+	return fmt.Sprintf("%s/%06d.sst", outputDir, cm.engine.sstCounter.Load())
 }
 
 func (cm *CompactionManager) compactTierRecursive(start int) error {
-	for tier := start; tier < len(*cm.tiers); tier++ {
+	for tier := start; tier < len(cm.engine.tiers); tier++ {
 		if !cm.shouldCompactTier(tier) {
 			return nil
 		}
@@ -53,13 +53,13 @@ func (cm *CompactionManager) compactTier(tier int) error {
 		return nil
 	}
 
-	inputs := (*cm.tiers)[tier]
+	inputs := cm.engine.tiers[tier]
 	outputFile := cm.generateOutputPath(tier + 1) // e.g., T1/000123.sst
 	output := sstable.NewSSTable(outputFile)
 
 	// Ensure tiers slice is long enough
-	for len(*cm.tiers) <= tier+1 {
-		*cm.tiers = append(*cm.tiers, nil)
+	for len(cm.engine.tiers) <= tier+1 {
+		cm.engine.tiers = append(cm.engine.tiers, nil)
 	}
 
 	// Add sources to merger
@@ -87,8 +87,8 @@ func (cm *CompactionManager) compactTier(tier int) error {
 	for _, sst := range inputs {
 		_ = sst.Delete() // delete file from disk
 	}
-	(*cm.tiers)[tier] = []*sstable.SSTable{}
-	(*cm.tiers)[tier+1] = append((*cm.tiers)[tier+1], output)
+	cm.engine.tiers[tier] = []*sstable.SSTable{}
+	cm.engine.tiers[tier+1] = append(cm.engine.tiers[tier+1], output)
 
 	cm.merger.Reset()
 	return nil

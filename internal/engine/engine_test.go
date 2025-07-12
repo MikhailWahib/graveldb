@@ -102,11 +102,12 @@ func TestMemtableFlush(t *testing.T) {
 	tmpDir := t.TempDir()
 
 	// Lower threshold for easier testing
-	engine.MaxMemtableSize = 1 // force flush on first insert
 
 	e := engine.NewEngine()
 	err := e.OpenDB(tmpDir)
 	require.NoError(t, err)
+
+	e.SetMaxMemtableSize(1) // force flush on first insert
 
 	// Insert one key to trigger flush
 	err = e.Put("key1", "value1")
@@ -134,11 +135,12 @@ func TestEngine_GetFromSSTable(t *testing.T) {
 	tmpDir := t.TempDir()
 
 	// Force flush immediately
-	engine.MaxMemtableSize = 1
 
 	e := engine.NewEngine()
 	err := e.OpenDB(tmpDir)
 	require.NoError(t, err)
+
+	e.SetMaxMemtableSize(1)
 
 	// Put key to trigger flush
 	err = e.Put("flushed_key", "flushed_value")
@@ -147,7 +149,7 @@ func TestEngine_GetFromSSTable(t *testing.T) {
 	// Wait for flush to complete
 	time.Sleep(100 * time.Millisecond)
 
-	engine.MaxMemtableSize = 100
+	e.SetMaxMemtableSize(100)
 
 	// Put another key in memtable
 	err = e.Put("memtable_key", "memtable_value")
@@ -167,11 +169,12 @@ func TestEngine_GetDeletedFromSSTable(t *testing.T) {
 	tmpDir := t.TempDir()
 
 	// Force flush immediately
-	engine.MaxMemtableSize = 1
 
 	e := engine.NewEngine()
 	err := e.OpenDB(tmpDir)
 	require.NoError(t, err)
+
+	e.SetMaxMemtableSize(1)
 
 	// Put and delete key to trigger flush with tombstone
 	err = e.Put("deleted_key", "some_value")
@@ -208,7 +211,7 @@ func TestEngine_SSTCounterRestoration(t *testing.T) {
 	require.NoError(t, err)
 
 	// Force flush to see next counter value
-	engine.MaxMemtableSize = 1
+	e.SetMaxMemtableSize(1)
 	err = e.Put("test_key", "test_value")
 	require.NoError(t, err)
 
@@ -233,7 +236,7 @@ func TestEngine_NonExistentKey(t *testing.T) {
 	assert.Equal(t, "", val)
 
 	// Add some data and flush
-	engine.MaxMemtableSize = 1
+	e.SetMaxMemtableSize(1)
 	err = e.Put("existing", "value")
 	require.NoError(t, err)
 
@@ -252,12 +255,13 @@ func TestEngine_NonExistentKey(t *testing.T) {
 
 func Test_ReadLatestFromMultipleSSTsInOneTier(t *testing.T) {
 	tmpDir := t.TempDir()
-	engine.MaxMemtableSize = 1
-	engine.MaxTablesPerTier = 4
 
 	e := engine.NewEngine()
 	err := e.OpenDB(tmpDir)
 	require.NoError(t, err)
+
+	e.SetMaxMemtableSize(1)
+	e.SetMaxTablesPerTier(4)
 
 	for i := range 2 {
 		key := fmt.Sprintf("key%d", i)
@@ -277,12 +281,12 @@ func Test_ReadLatestFromMultipleSSTsInOneTier(t *testing.T) {
 
 func TestCompaction_TriggersWhenThresholdExceeded(t *testing.T) {
 	tmpDir := t.TempDir()
-	engine.MaxMemtableSize = 1
-	engine.MaxTablesPerTier = 2
 
 	e := engine.NewEngine()
 	err := e.OpenDB(tmpDir)
 	require.NoError(t, err)
+	e.SetMaxMemtableSize(1)
+	e.SetMaxTablesPerTier(2)
 
 	for i := range 3 {
 		key := fmt.Sprintf("key%d", i)
@@ -299,12 +303,13 @@ func TestCompaction_TriggersWhenThresholdExceeded(t *testing.T) {
 
 func TestCompaction_MergedOutputContainsLatestValues(t *testing.T) {
 	tmpDir := t.TempDir()
-	engine.MaxMemtableSize = 1
-	engine.MaxTablesPerTier = 1
 
 	e := engine.NewEngine()
 	err := e.OpenDB(tmpDir)
 	require.NoError(t, err)
+
+	e.SetMaxMemtableSize(1)
+	e.SetMaxTablesPerTier(1)
 
 	// Write initial value
 	require.NoError(t, e.Put("a", "old"))
@@ -322,12 +327,13 @@ func TestCompaction_MergedOutputContainsLatestValues(t *testing.T) {
 
 func TestCompaction_RespectsDeletes(t *testing.T) {
 	tmpDir := t.TempDir()
-	engine.MaxMemtableSize = 1
-	engine.MaxTablesPerTier = 2
 
 	e := engine.NewEngine()
 	err := e.OpenDB(tmpDir)
 	require.NoError(t, err)
+
+	e.SetMaxMemtableSize(1)
+	e.SetMaxTablesPerTier(2)
 
 	require.NoError(t, e.Put("x", "1"))
 	time.Sleep(50 * time.Millisecond)
@@ -343,12 +349,13 @@ func TestCompaction_RespectsDeletes(t *testing.T) {
 
 func TestCompaction_DeletesOldSSTables(t *testing.T) {
 	tmpDir := t.TempDir()
-	engine.MaxMemtableSize = 1
-	engine.MaxTablesPerTier = 2
 
 	e := engine.NewEngine()
 	err := e.OpenDB(tmpDir)
 	require.NoError(t, err)
+
+	e.SetMaxMemtableSize(1)
+	e.SetMaxTablesPerTier(2)
 
 	for i := range 3 {
 		require.NoError(t, e.Put(fmt.Sprintf("k%d", i), fmt.Sprintf("v%d", i)))
@@ -365,12 +372,13 @@ func TestCompaction_DeletesOldSSTables(t *testing.T) {
 
 func TestCompaction_WritesToCorrectTier(t *testing.T) {
 	tmpDir := t.TempDir()
-	engine.MaxMemtableSize = 1
-	engine.MaxTablesPerTier = 2
 
 	e := engine.NewEngine()
 	err := e.OpenDB(tmpDir)
 	require.NoError(t, err)
+
+	e.SetMaxMemtableSize(1)
+	e.SetMaxTablesPerTier(2)
 
 	for i := range 4 {
 		require.NoError(t, e.Put(fmt.Sprintf("k%d", i), fmt.Sprintf("v%d", i)))
@@ -389,12 +397,13 @@ func TestCompaction_WritesToCorrectTier(t *testing.T) {
 
 func TestCompaction_CreatesValidMergedSSTable(t *testing.T) {
 	tmpDir := t.TempDir()
-	engine.MaxMemtableSize = 1
-	engine.MaxTablesPerTier = 2
 
 	e := engine.NewEngine()
 	err := e.OpenDB(tmpDir)
 	require.NoError(t, err)
+
+	e.SetMaxMemtableSize(1)
+	e.SetMaxTablesPerTier(2)
 
 	require.NoError(t, e.Put("z", "last"))
 	time.Sleep(100 * time.Millisecond)

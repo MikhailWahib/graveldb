@@ -17,20 +17,24 @@ import (
 
 // Engine is the main database engine, managing memtable, WAL, SSTables, and compaction.
 type Engine struct {
-	dataDir       string
-	memtable      memtable.Memtable
-	wal           *wal.WAL
-	tiers         [][]*sstable.SSTable
-	compactionMgr *CompactionManager
-	sstCounter    *atomic.Uint64
+	dataDir          string
+	memtable         memtable.Memtable
+	wal              *wal.WAL
+	tiers            [][]*sstable.SSTable
+	compactionMgr    *CompactionManager
+	sstCounter       *atomic.Uint64
+	maxMemtableSize  int
+	maxTablesPerTier int
 }
 
 // NewEngine creates a new Engine instance for the given data directory.
 func NewEngine() *Engine {
 	return &Engine{
-		memtable:   memtable.NewMemtable(),
-		tiers:      make([][]*sstable.SSTable, 0),
-		sstCounter: new(atomic.Uint64),
+		memtable:         memtable.NewMemtable(),
+		tiers:            make([][]*sstable.SSTable, 0),
+		sstCounter:       new(atomic.Uint64),
+		maxMemtableSize:  MaxMemtableSize,
+		maxTablesPerTier: MaxTablesPerTier,
 	}
 }
 
@@ -66,7 +70,7 @@ func (e *Engine) OpenDB(dataDir string) error {
 	}
 	e.wal = wal
 
-	compactionMgr := NewCompactionManager(e.dataDir, &e.tiers, e.sstCounter)
+	compactionMgr := NewCompactionManager(e)
 	e.compactionMgr = compactionMgr
 
 	return e.parseTiers()
@@ -143,7 +147,7 @@ func (e *Engine) Put(key, value string) error {
 		return err
 	}
 
-	if e.memtable.Size() > MaxMemtableSize {
+	if e.memtable.Size() > e.maxMemtableSize {
 		old := e.memtable
 		e.memtable = memtable.NewMemtable()
 		go func() {
@@ -248,4 +252,12 @@ func (e *Engine) flushMemtable(mt memtable.Memtable) error {
 	}
 
 	return nil
+}
+
+func (e *Engine) SetMaxMemtableSize(sizeInBytes int) {
+	e.maxMemtableSize = sizeInBytes
+}
+
+func (e *Engine) SetMaxTablesPerTier(n int) {
+	e.maxTablesPerTier = n
 }
