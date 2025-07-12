@@ -2,6 +2,8 @@
 // providing fast access to recently written data before it is persisted to disk.
 package memtable
 
+import "sync"
+
 // TOMBSTONE represents a deletion marker in the memtable
 const TOMBSTONE = "TOMBSTONE"
 
@@ -10,13 +12,13 @@ const TOMBSTONE = "TOMBSTONE"
 type Memtable interface {
 	// Entries return all entries in the skiplist
 	Entries() []Entry
-	// Put inserts a key-value pair into the memtable and appends the operation to the Write-Ahead Log (WAL).
+	// Put inserts a key-value pair into the memtable.
 	// Returns an error if the operation fails.
 	Put(key, value string) error
 	// Get retrieves the value associated with the key from the memtable.
 	// Returns the value and a boolean indicating if the key was found.
 	Get(key string) (string, bool)
-	// Delete removes the key from the memtable and appends the delete operation to the Write-Ahead Log (WAL).
+	// Delete removes the key from the memtable
 	// Returns an error if the operation fails.
 	Delete(key string) error
 	// Size returns the size of the memtable in bytes.
@@ -28,10 +30,12 @@ type Memtable interface {
 // SkiplistMemtable implements the Memtable interface using a skiplist
 // data structure for efficient operations
 type SkiplistMemtable struct {
+	mu sync.RWMutex
+
 	sl *SkipList
 }
 
-// NewMemtable creates a new Memtable instance with a Write-Ahead Log (WAL).
+// NewMemtable creates a new Memtable instance.
 func NewMemtable() Memtable {
 	return &SkiplistMemtable{
 		sl: NewSkipList(),
@@ -40,22 +44,34 @@ func NewMemtable() Memtable {
 
 // Entries returns all entries in the skiplist memtable.
 func (m *SkiplistMemtable) Entries() []Entry {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
 	return m.sl.Entries()
 }
 
 // Put inserts or updates a key-value pair in the memtable
 func (m *SkiplistMemtable) Put(key, value string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
 	m.sl.Put(key, value)
 	return nil
 }
 
 // Get retrieves a value from the memtable by key
 func (m *SkiplistMemtable) Get(key string) (string, bool) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
 	return m.sl.Get(key)
 }
 
 // Delete marks a key from the memtable as removed with TOMBSTONE
 func (m *SkiplistMemtable) Delete(key string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
 	err := m.sl.Delete(key)
 	if err != nil {
 		return err
@@ -65,10 +81,16 @@ func (m *SkiplistMemtable) Delete(key string) error {
 
 // Size returns the size of entries in the skiplist in bytes
 func (m *SkiplistMemtable) Size() int {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
 	return m.sl.Size()
 }
 
 // Clear clears the skiplist
 func (m *SkiplistMemtable) Clear() {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
 	m.sl.Clear()
 }
