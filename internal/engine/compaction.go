@@ -120,23 +120,8 @@ func (cm *CompactionManager) compact(tier int) error {
 		return fmt.Errorf("failed to merge SSTables: %w", err)
 	}
 
-	// Close output SSTable
-	if err := output.Close(); err != nil {
-		// Clean up input SSTables
-		for _, sst := range inputs {
-			_ = sst.Close()
-		}
-		return fmt.Errorf("failed to close output SST: %w", err)
-	}
-
-	// Close input SSTables before deletion
-	for _, sst := range inputs {
-		_ = sst.Close()
-	}
-
-	// Delete input SSTable files from disk
-	for _, sst := range inputs {
-		_ = sst.Delete() // delete file from disk
+	if err := cm.finalizeAndCleanup(output, inputs); err != nil {
+		return err
 	}
 
 	// Update tiers structure
@@ -146,5 +131,20 @@ func (cm *CompactionManager) compact(tier int) error {
 	// Reset merger for next use
 	cm.merger.Reset()
 
+	return nil
+}
+
+func (cm *CompactionManager) finalizeAndCleanup(output *sstable.SSTable, inputs []*sstable.SSTable) error {
+	if err := output.Close(); err != nil {
+		for _, sst := range inputs {
+			_ = sst.Close()
+		}
+		return fmt.Errorf("failed to close output SST: %w", err)
+	}
+
+	for _, sst := range inputs {
+		_ = sst.Close()
+		_ = sst.Delete()
+	}
 	return nil
 }
