@@ -430,3 +430,66 @@ func TestCompaction_CreatesValidMergedSSTable(t *testing.T) {
 	assert.Equal(t, []byte("last latest"), val)
 	require.NoError(t, merged.Close())
 }
+
+func TestCompaction_PromotesToHigherTiers(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	e := engine.NewEngine()
+	require.NoError(t, e.OpenDB(tmpDir))
+
+	e.SetMaxMemtableSize(1)
+	e.SetMaxTablesPerTier(1) // So that every tier overflows immediately
+
+	// Insert enough keys to trigger multi-tier compaction
+	for i := range 5 {
+		require.NoError(t, e.Put(fmt.Sprintf("k%d", i), fmt.Sprintf("v%d", i)))
+		time.Sleep(100 * time.Millisecond) // Give time for flush + compaction
+	}
+
+	time.Sleep(1 * time.Second) // Ensure all compactions finish
+
+	tiers := e.Tiers()
+	require.GreaterOrEqual(t, len(tiers), 3, "Expected compaction to reach tier T2")
+
+	// Check key still exists
+	val, found := e.Get("k0")
+	assert.True(t, found)
+	assert.Equal(t, "v0", val)
+
+	// Ensure at least one SSTable exists in T2
+	assert.GreaterOrEqual(t, len(tiers[2]), 1, "Expected SSTables in tier T2")
+	for _, sst := range tiers[2] {
+		assert.Contains(t, sst.GetPath(), "T2")
+	}
+}
+
+func TestEngine_WALReplay_MixedTombstones(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	func() {
+		e := engine.NewEngine()
+		require.NoError(t, e.OpenDB(tmpDir))
+
+		require.NoError(t, e.Put("a", "1"))
+		require.NoError(t, e.Put("b", "2"))
+		require.NoError(t, e.Delete("a"))
+		require.NoError(t, e.Put("c", "3"))
+		require.NoError(t, e.Delete("b"))
+	}()
+
+	// Simulate restart
+	e := engine.NewEngine()
+	require.NoError(t, e.OpenDB(tmpDir))
+
+	val, found := e.Get("a")
+	assert.False(t, found)
+	assert.Equal(t, "", val)
+
+	val, found = e.Get("b")
+	assert.False(t, found)
+	assert.Equal(t, "", val)
+
+	val, found = e.Get("c")
+	assert.True(t, found)
+	assert.Equal(t, "3", val)
+}
