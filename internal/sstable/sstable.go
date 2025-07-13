@@ -3,11 +3,14 @@ package sstable
 import (
 	"fmt"
 	"os"
+	"sync"
 )
 
 // SSTable provides a unified interface for SSTable operations,
 // internally delegating to SSTReader and SSTWriter
 type SSTable struct {
+	mu sync.RWMutex
+
 	path      string
 	reader    *sstReader
 	writer    *sstWriter
@@ -26,6 +29,9 @@ func NewSSTable(path string) *SSTable {
 
 // OpenForRead opens an existing SSTable file in read mode
 func (sst *SSTable) OpenForRead() error {
+	sst.mu.Lock()
+	defer sst.mu.Unlock()
+
 	if sst.isReading || sst.isWriting {
 		return fmt.Errorf("SSTable is already open for reading or writing")
 	}
@@ -43,6 +49,9 @@ func (sst *SSTable) OpenForRead() error {
 
 // OpenForWrite creates a new SSTable file in write mode
 func (sst *SSTable) OpenForWrite() error {
+	sst.mu.Lock()
+	defer sst.mu.Unlock()
+
 	if sst.isReading || sst.isWriting {
 		return fmt.Errorf("SSTable is already open for reading or writing")
 	}
@@ -60,6 +69,9 @@ func (sst *SSTable) OpenForWrite() error {
 
 // Lookup performs a lookup in read mode
 func (sst *SSTable) Lookup(key []byte) ([]byte, error) {
+	sst.mu.RLock()
+	defer sst.mu.RUnlock()
+
 	if !sst.isReading {
 		return nil, fmt.Errorf("SSTable is not open for reading")
 	}
@@ -68,6 +80,9 @@ func (sst *SSTable) Lookup(key []byte) ([]byte, error) {
 
 // AppendPut adds a key-value pair in write mode
 func (sst *SSTable) AppendPut(key, value []byte) error {
+	sst.mu.Lock()
+	defer sst.mu.Unlock()
+
 	if !sst.isWriting {
 		return fmt.Errorf("SSTable is not open for writing")
 	}
@@ -76,6 +91,9 @@ func (sst *SSTable) AppendPut(key, value []byte) error {
 
 // AppendDelete adds a deletion marker in write mode
 func (sst *SSTable) AppendDelete(key []byte) error {
+	sst.mu.Lock()
+	defer sst.mu.Unlock()
+
 	if !sst.isWriting {
 		return fmt.Errorf("SSTable is not open for writing")
 	}
@@ -84,6 +102,9 @@ func (sst *SSTable) AppendDelete(key []byte) error {
 
 // NewIterator creates a new iterator for the SSTable in read mode
 func (sst *SSTable) NewIterator() (*Iterator, error) {
+	sst.mu.RLock()
+	defer sst.mu.RUnlock()
+
 	if !sst.isReading {
 		return nil, fmt.Errorf("SSTable is not open for reading")
 	}
@@ -92,13 +113,18 @@ func (sst *SSTable) NewIterator() (*Iterator, error) {
 
 // Finish finalizes the SSTable in write mode
 func (sst *SSTable) Finish() error {
+	sst.mu.Lock()
+	defer sst.mu.Unlock()
+
 	if !sst.isWriting {
 		return fmt.Errorf("SSTable is not open for writing")
 	}
+
 	err := sst.writer.Finish()
 	if err != nil {
 		return err
 	}
+
 	sst.isWriting = false
 	sst.writer = nil
 	return nil
@@ -106,6 +132,9 @@ func (sst *SSTable) Finish() error {
 
 // Close closes the SSTable
 func (sst *SSTable) Close() error {
+	sst.mu.Lock()
+	defer sst.mu.Unlock()
+
 	var err error
 	if sst.isReading {
 		err = sst.reader.Close()
@@ -124,10 +153,16 @@ func (sst *SSTable) Close() error {
 
 // Delete removes the SSTable file from disk.
 func (sst *SSTable) Delete() error {
-	return os.Remove(sst.GetPath())
+	sst.mu.RLock()
+	path := sst.path
+	sst.mu.RUnlock()
+
+	return os.Remove(path)
 }
 
 // GetPath returns the file path of the SSTable.
 func (sst *SSTable) GetPath() string {
+	sst.mu.RLock()
+	defer sst.mu.RUnlock()
 	return sst.path
 }

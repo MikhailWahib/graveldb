@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"sync/atomic"
 
 	"github.com/MikhailWahib/graveldb/internal/memtable"
@@ -17,6 +18,8 @@ import (
 
 // Engine is the main database engine, managing memtable, WAL, SSTables, and compaction.
 type Engine struct {
+	mu sync.RWMutex
+
 	dataDir          string
 	memtable         memtable.Memtable
 	wal              *wal.WAL
@@ -134,6 +137,9 @@ func (e *Engine) parseTiers() error {
 
 // Tiers returns the current SSTable tiers managed by the engine.
 func (e *Engine) Tiers() [][]*sstable.SSTable {
+	e.mu.RLock()
+	defer e.mu.RUnlock()
+
 	return e.tiers
 }
 
@@ -146,6 +152,9 @@ func (e *Engine) Put(key, value string) error {
 	if err := e.memtable.Put(key, value); err != nil {
 		return err
 	}
+
+	e.mu.Lock()
+	defer e.mu.Unlock()
 
 	if e.memtable.Size() > e.maxMemtableSize {
 		old := e.memtable
@@ -162,6 +171,7 @@ func (e *Engine) Put(key, value string) error {
 
 // Get retrieves the value for a given key, searching memtable and all SSTable tiers.
 func (e *Engine) Get(key string) (string, bool) {
+	// First check memtable
 	val, found := e.memtable.Get(key)
 	if found {
 		if val == memtable.TOMBSTONE {
@@ -170,21 +180,27 @@ func (e *Engine) Get(key string) (string, bool) {
 		return val, true
 	}
 
+	e.mu.RLock()
+	defer e.mu.RUnlock()
+
 	// Search all tiers, newest to oldest
 	for _, tier := range e.tiers {
 		for i := len(tier) - 1; i >= 0; i-- {
-			if err := tier[i].OpenForRead(); err != nil {
-				log.Printf("error opening sst: %s for read", tier[i].GetPath())
-				return "", false
-			}
-			closer := tier[i]
-			defer func() {
-				if err := closer.Close(); err != nil {
-					log.Printf("error closing sst: %s: %v", closer.GetPath(), err)
-				}
-			}()
+			sst := tier[i]
 
-			if val, err := tier[i].Lookup([]byte(key)); err == nil {
+			if err := sst.OpenForRead(); err != nil {
+				log.Printf("error opening sst: %s for read: %v", sst.GetPath(), err)
+				continue
+			}
+
+			val, err := sst.Lookup([]byte(key))
+
+			// Close immediately after lookup
+			if closeErr := sst.Close(); closeErr != nil {
+				log.Printf("error closing sst: %s: %v", sst.GetPath(), closeErr)
+			}
+
+			if err == nil {
 				if string(val) == memtable.TOMBSTONE {
 					return "", false
 				}
@@ -234,6 +250,7 @@ func (e *Engine) flushMemtable(mt memtable.Memtable) error {
 		return fmt.Errorf("failed to close SSTable: %w", err)
 	}
 
+	e.mu.Lock()
 	// Ensure tier 0 exists
 	if len(e.tiers) == 0 {
 		e.tiers = append(e.tiers, []*sstable.SSTable{})
@@ -242,10 +259,13 @@ func (e *Engine) flushMemtable(mt memtable.Memtable) error {
 	// Append SST to T0
 	e.tiers[0] = append(e.tiers[0], sst)
 
+	shouldCompact := e.compactionMgr.shouldCompactTier(0)
+	e.mu.Unlock()
+
 	// Run compaction on T0 if needed
-	if e.compactionMgr.shouldCompactTier(0) {
+	if shouldCompact {
 		go func() {
-			if err := e.compactionMgr.compactTierRecursive(0); err != nil {
+			if err := e.compactionMgr.compactTiers(0); err != nil {
 				log.Printf("compaction error: %v", err)
 			}
 		}()
@@ -254,10 +274,16 @@ func (e *Engine) flushMemtable(mt memtable.Memtable) error {
 	return nil
 }
 
+// SetMaxMemtableSize sets the maximum size for memtable before flushing.
 func (e *Engine) SetMaxMemtableSize(sizeInBytes int) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
 	e.maxMemtableSize = sizeInBytes
 }
 
+// SetMaxTablesPerTier sets the maximum number of SSTables per tier before compaction.
 func (e *Engine) SetMaxTablesPerTier(n int) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
 	e.maxTablesPerTier = n
 }

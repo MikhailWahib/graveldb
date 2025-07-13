@@ -27,8 +27,6 @@ func TestWAL_BasicOperations(t *testing.T) {
 
 	require.NoError(t, w.AppendDelete("key3"))
 
-	require.NoError(t, w.Sync())
-
 	require.NoError(t, w.Close())
 
 	assert.FileExists(t, walPath)
@@ -59,8 +57,6 @@ func TestWAL_Replay(t *testing.T) {
 		}
 	}
 
-	// Sync and close
-	require.NoError(t, w.Sync())
 	require.NoError(t, w.Close())
 
 	// Reopen WAL for replay

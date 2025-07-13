@@ -5,10 +5,10 @@ BIN_DIR = ./bin/tests
 $(shell mkdir -p $(BIN_DIR))
 
 test-all:
-	go test ./...
+	go test -race ./...
 
 test-all-v:
-	go test ./... -v
+	go test -race ./... -v
 
 compile-tests:
 	@if [ -z "$(TEST)" ]; then \

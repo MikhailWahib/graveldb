@@ -261,7 +261,6 @@ func Test_ReadLatestFromMultipleSSTsInOneTier(t *testing.T) {
 	require.NoError(t, err)
 
 	e.SetMaxMemtableSize(1)
-	e.SetMaxTablesPerTier(4)
 
 	for i := range 2 {
 		key := fmt.Sprintf("key%d", i)

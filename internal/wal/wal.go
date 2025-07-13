@@ -4,6 +4,7 @@ package wal
 import (
 	"io"
 	"os"
+	"sync"
 
 	"github.com/MikhailWahib/graveldb/internal/shared"
 )
@@ -17,6 +18,8 @@ type Entry struct {
 
 // WAL manages the write-ahead log file
 type WAL struct {
+	mu sync.Mutex
+
 	path        string
 	file        *os.File
 	writeOffset int64
@@ -63,8 +66,9 @@ func (w *WAL) AppendDelete(key string) error {
 // writeEntry formats an entry and writes it using the file handle
 // Format: [1 byte Type][4 bytes KeyLen][4 bytes ValueLen][Key][Value]
 func (w *WAL) writeEntry(e Entry) error {
-	// Write the entry type, key length, value length, key, and value.
-	// offset added by one because of the added byte above.
+	w.mu.Lock()
+	defer w.mu.Unlock()
+
 	n, err := shared.WriteEntry(shared.Entry{
 		File:   w.file,
 		Offset: w.writeOffset,
@@ -80,11 +84,14 @@ func (w *WAL) writeEntry(e Entry) error {
 	w.writeOffset = n
 
 	// Sync after each write for durability
-	return w.Sync()
+	return w.sync()
 }
 
 // Replay reads entries from the beginning, returning 0 offset at EOF
 func (w *WAL) Replay() ([]Entry, error) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+
 	var offset int64
 	var walEntries []Entry
 
@@ -111,13 +118,16 @@ func (w *WAL) Replay() ([]Entry, error) {
 }
 
 // Sync ensures all data is persisted to disk
-func (w *WAL) Sync() error {
+func (w *WAL) sync() error {
 	return w.file.Sync()
 }
 
 // Close closes the WAL file
 func (w *WAL) Close() error {
-	if err := w.Sync(); err != nil {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+
+	if err := w.sync(); err != nil {
 		return err
 	}
 	return w.file.Close()
