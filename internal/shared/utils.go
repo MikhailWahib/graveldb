@@ -89,8 +89,9 @@ func ReadEntry(f *os.File, offset int64) (StoredEntry, error) {
 	}, nil
 }
 
-// CompareKeys compares bytes lexicographically
-func CompareKeys(a, b []byte) int {
+// CompareBytes compares (a, b) bytes lexicographically
+// Returns -1 if a < b, 1 if a > b, 0 if a == b
+func CompareBytes(a, b []byte) int {
 	minLen := min(len(b), len(a))
 	for i := range minLen {
 		if a[i] < b[i] {

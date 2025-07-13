@@ -3,6 +3,8 @@ package memtable
 import (
 	"math/rand"
 	"time"
+
+	"github.com/MikhailWahib/graveldb/internal/shared"
 )
 
 const (
@@ -13,8 +15,8 @@ const (
 // SkipListNode represents a node in the skip list data structure,
 // containing the key-value pair and links to other nodes
 type SkipListNode struct {
-	key   string
-	value string
+	key   []byte
+	value []byte
 	next  []*SkipListNode
 }
 
@@ -30,7 +32,7 @@ type SkipList struct {
 
 // NewSkipListNode creates a new SkipListNode with the given key, value, and level.
 // It initializes the 'next' slice to the correct length for the node's level.
-func NewSkipListNode(key, value string, level int) *SkipListNode {
+func NewSkipListNode(key, value []byte, level int) *SkipListNode {
 	return &SkipListNode{
 		key:   key,
 		value: value,
@@ -42,7 +44,7 @@ func NewSkipListNode(key, value string, level int) *SkipListNode {
 // The list is seeded with a pseudo-random generator and a head node with maxLevel pointers.
 func NewSkipList() *SkipList {
 	return &SkipList{
-		head:     NewSkipListNode("", "", maxLevel),
+		head:     NewSkipListNode([]byte{}, []byte{}, maxLevel),
 		level:    1,
 		maxLevel: maxLevel,
 		size:     0,
@@ -52,8 +54,8 @@ func NewSkipList() *SkipList {
 
 // Entry represents a key-value pair in the skiplist.
 type Entry struct {
-	Key   string
-	Value string
+	Key   []byte
+	Value []byte
 }
 
 // Entries return all entries in the skiplist
@@ -82,14 +84,14 @@ func (sl *SkipList) randomLevel() int {
 }
 
 // Put inserts a new key-value pair into the SkipList or updates the value if the key already exists.
-func (sl *SkipList) Put(key, value string) {
+func (sl *SkipList) Put(key, value []byte) {
 	// Create update array to store path
 	update := make([]*SkipListNode, sl.maxLevel)
 	current := sl.head
 
 	// Find all predecessor nodes at each level
 	for i := sl.level - 1; i >= 0; i-- {
-		for current.next[i] != nil && current.next[i].key < key {
+		for current.next[i] != nil && shared.CompareBytes(current.next[i].key, key) < 0 {
 			current = current.next[i]
 		}
 		update[i] = current
@@ -99,7 +101,7 @@ func (sl *SkipList) Put(key, value string) {
 	current = current.next[0]
 
 	// If key exists, update the value
-	if current != nil && current.key == key {
+	if current != nil && shared.CompareBytes(current.key, key) == 0 {
 		current.value = value
 		return
 	}
@@ -125,36 +127,36 @@ func (sl *SkipList) Put(key, value string) {
 }
 
 // Get retrieves the value associated with a given key.
-// Returns the value and true if found, otherwise returns an empty string and false.
-func (sl *SkipList) Get(key string) (string, bool) {
+// Returns the value and true if found, otherwise returns nil and false.
+func (sl *SkipList) Get(key []byte) ([]byte, bool) {
 	current := sl.head
 
 	// Start from the highest level and work down
 	for i := sl.level - 1; i >= 0; i-- {
-		for current.next[i] != nil && current.next[i].key < key {
+		for current.next[i] != nil && shared.CompareBytes(current.next[i].key, key) < 0 {
 			current = current.next[i]
 		}
 	}
 
 	// Check the node at level 0
 	current = current.next[0]
-	if current != nil && current.key == key {
+	if current != nil && shared.CompareBytes(current.key, key) == 0 {
 		return current.value, true
 	}
 
-	return "", false
+	return nil, false
 }
 
 // Delete marks a key as deleted in the skiplist by setting its value to TOMBSTONE.
-func (sl *SkipList) Delete(key string) error {
+func (sl *SkipList) Delete(key []byte) error {
 	val, _ := sl.Get(key)
 
 	// Ignore the case where the key is already deleted
-	if val == TOMBSTONE {
+	if string(val) == TOMBSTONE {
 		return nil
 	}
 
-	sl.Put(key, TOMBSTONE)
+	sl.Put(key, []byte(TOMBSTONE))
 
 	sl.size -= len(val)
 	sl.size += len(TOMBSTONE)
@@ -163,13 +165,13 @@ func (sl *SkipList) Delete(key string) error {
 
 // Range returns a slice of keys in the range [start, end] (inclusive).
 // Traverses the SkipList starting from 'start' and collects keys up to 'end'.
-func (sl *SkipList) Range(start, end string) []string {
-	var result []string
+func (sl *SkipList) Range(start, end []byte) [][]byte {
+	var result [][]byte
 	current := sl.head
 
 	// Find the first node >= start
 	for i := sl.level - 1; i >= 0; i-- {
-		for current.next[i] != nil && current.next[i].key < start {
+		for current.next[i] != nil && shared.CompareBytes(current.next[i].key, start) < 0 {
 			current = current.next[i]
 		}
 	}
@@ -178,7 +180,7 @@ func (sl *SkipList) Range(start, end string) []string {
 	current = current.next[0]
 
 	// Collect all nodes in range
-	for current != nil && current.key <= end {
+	for current != nil && shared.CompareBytes(current.key, end) <= 0 {
 		result = append(result, current.key)
 		current = current.next[0]
 	}
@@ -207,7 +209,7 @@ func (sl *SkipList) IsEmpty() bool {
 
 // Contains checks whether a given key exists in the SkipList.
 // Returns true if the key is present, false otherwise.
-func (sl *SkipList) Contains(key string) bool {
+func (sl *SkipList) Contains(key []byte) bool {
 	_, found := sl.Get(key)
 	return found
 }

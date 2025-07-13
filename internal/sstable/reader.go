@@ -88,7 +88,7 @@ func (r *sstReader) Close() error {
 func (r *sstReader) Lookup(key []byte) ([]byte, error) {
 	// Find index entry with key <= target
 	pos := sort.Search(len(r.index), func(i int) bool {
-		return shared.CompareKeys(r.index[i].Key, key) > 0
+		return shared.CompareBytes(r.index[i].Key, key) > 0
 	}) - 1
 
 	if pos < 0 {
@@ -115,7 +115,7 @@ func (r *sstReader) Lookup(key []byte) ([]byte, error) {
 			return nil, fmt.Errorf("failed to read entry: %w", err)
 		}
 
-		cmp := shared.CompareKeys(entry.Key, key)
+		cmp := shared.CompareBytes(entry.Key, key)
 		if cmp == 0 {
 			if shared.EntryType(entry.Type) == shared.DeleteEntry {
 				foundDeleted = true

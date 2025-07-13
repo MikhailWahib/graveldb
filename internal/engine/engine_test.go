@@ -1,6 +1,7 @@
 package engine_test
 
 import (
+	"bytes"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -22,27 +23,27 @@ func TestEngine_BasicPutGetDelete(t *testing.T) {
 	require.NoError(t, err)
 
 	// Insert some keys
-	err = e.Put("foo", "bar")
+	err = e.Put([]byte("foo"), []byte("bar"))
 	require.NoError(t, err)
-	err = e.Put("baz", "qux")
+	err = e.Put([]byte("baz"), []byte("qux"))
 	require.NoError(t, err)
 
 	// Get keys
-	val, found := e.Get("foo")
+	val, found := e.Get([]byte("foo"))
 	assert.True(t, found)
-	assert.Equal(t, "bar", val)
+	assert.True(t, bytes.Equal([]byte("bar"), val))
 
-	val, found = e.Get("baz")
+	val, found = e.Get([]byte("baz"))
 	assert.True(t, found)
-	assert.Equal(t, "qux", val)
+	assert.True(t, bytes.Equal([]byte("qux"), val))
 
 	// Delete one
-	err = e.Delete("foo")
+	err = e.Delete([]byte("foo"))
 	require.NoError(t, err)
 
-	val, found = e.Get("foo")
+	val, found = e.Get([]byte("foo"))
 	assert.False(t, found)
-	assert.Equal(t, "", val)
+	assert.Nil(t, val)
 }
 
 func TestEngine_WALReplay(t *testing.T) {
@@ -54,11 +55,11 @@ func TestEngine_WALReplay(t *testing.T) {
 		err := e.OpenDB(tmpDir)
 		require.NoError(t, err)
 
-		err = e.Put("a", "1")
+		err = e.Put([]byte("a"), []byte("1"))
 		require.NoError(t, err)
-		err = e.Put("b", "2")
+		err = e.Put([]byte("b"), []byte("2"))
 		require.NoError(t, err)
-		err = e.Delete("a")
+		err = e.Delete([]byte("a"))
 		require.NoError(t, err)
 	}()
 
@@ -67,13 +68,13 @@ func TestEngine_WALReplay(t *testing.T) {
 	err := db2.OpenDB(tmpDir)
 	require.NoError(t, err)
 
-	val, found := db2.Get("a")
+	val, found := db2.Get([]byte("a"))
 	assert.False(t, found)
-	assert.Equal(t, "", val)
+	assert.Nil(t, val)
 
-	val, found = db2.Get("b")
+	val, found = db2.Get([]byte("b"))
 	assert.True(t, found)
-	assert.Equal(t, "2", val)
+	assert.True(t, bytes.Equal([]byte("2"), val))
 }
 
 func TestEngine_OpenDB_ParseLevels(t *testing.T) {
@@ -110,7 +111,7 @@ func TestMemtableFlush(t *testing.T) {
 	e.SetMaxMemtableSize(1) // force flush on first insert
 
 	// Insert one key to trigger flush
-	err = e.Put("key1", "value1")
+	err = e.Put([]byte("key1"), []byte("value1"))
 	require.NoError(t, err)
 
 	// Wait a bit to ensure background flush finishes
@@ -128,7 +129,7 @@ func TestMemtableFlush(t *testing.T) {
 
 	val, err := sst.Lookup([]byte("key1"))
 	require.NoError(t, err, "Expected key1 to be found in flushed SSTable with no errors")
-	require.Equal(t, []byte("value1"), val)
+	require.True(t, bytes.Equal([]byte("value1"), val))
 }
 
 func TestEngine_GetFromSSTable(t *testing.T) {
@@ -143,7 +144,7 @@ func TestEngine_GetFromSSTable(t *testing.T) {
 	e.SetMaxMemtableSize(1)
 
 	// Put key to trigger flush
-	err = e.Put("flushed_key", "flushed_value")
+	err = e.Put([]byte("flushed_key"), []byte("flushed_value"))
 	require.NoError(t, err)
 
 	// Wait for flush to complete
@@ -152,17 +153,17 @@ func TestEngine_GetFromSSTable(t *testing.T) {
 	e.SetMaxMemtableSize(100)
 
 	// Put another key in memtable
-	err = e.Put("memtable_key", "memtable_value")
+	err = e.Put([]byte("memtable_key"), []byte("memtable_value"))
 	require.NoError(t, err)
 
 	// Should find both keys
-	val, found := e.Get("flushed_key")
+	val, found := e.Get([]byte("flushed_key"))
 	assert.True(t, found, "Should find key in SSTable")
-	assert.Equal(t, "flushed_value", val)
+	assert.True(t, bytes.Equal([]byte("flushed_value"), val))
 
-	val, found = e.Get("memtable_key")
+	val, found = e.Get([]byte("memtable_key"))
 	assert.True(t, found, "Should find key in memtable")
-	assert.Equal(t, "memtable_value", val)
+	assert.True(t, bytes.Equal([]byte("memtable_value"), val))
 }
 
 func TestEngine_GetDeletedFromSSTable(t *testing.T) {
@@ -177,18 +178,18 @@ func TestEngine_GetDeletedFromSSTable(t *testing.T) {
 	e.SetMaxMemtableSize(1)
 
 	// Put and delete key to trigger flush with tombstone
-	err = e.Put("deleted_key", "some_value")
+	err = e.Put([]byte("deleted_key"), []byte("some_value"))
 	require.NoError(t, err)
-	err = e.Delete("deleted_key")
+	err = e.Delete([]byte("deleted_key"))
 	require.NoError(t, err)
 
 	// Wait for flush
 	time.Sleep(100 * time.Millisecond)
 
 	// Should not find the deleted key
-	val, found := e.Get("deleted_key")
+	val, found := e.Get([]byte("deleted_key"))
 	assert.False(t, found, "Should not find deleted key")
-	assert.Equal(t, "", val)
+	assert.Nil(t, val)
 }
 
 func TestEngine_SSTCounterRestoration(t *testing.T) {
@@ -212,7 +213,7 @@ func TestEngine_SSTCounterRestoration(t *testing.T) {
 
 	// Force flush to see next counter value
 	e.SetMaxMemtableSize(1)
-	err = e.Put("test_key", "test_value")
+	err = e.Put([]byte("test_key"), []byte("test_value"))
 	require.NoError(t, err)
 
 	// Wait for flush
@@ -231,26 +232,26 @@ func TestEngine_NonExistentKey(t *testing.T) {
 	require.NoError(t, err)
 
 	// Try to get non-existent key
-	val, found := e.Get("nonexistent")
+	val, found := e.Get([]byte("nonexistent"))
 	assert.False(t, found)
-	assert.Equal(t, "", val)
+	assert.Nil(t, val)
 
 	// Add some data and flush
 	e.SetMaxMemtableSize(1)
-	err = e.Put("existing", "value")
+	err = e.Put([]byte("existing"), []byte("value"))
 	require.NoError(t, err)
 
 	time.Sleep(100 * time.Millisecond)
 
 	// Still shouldn't find non-existent key
-	val, found = e.Get("nonexistent")
+	val, found = e.Get([]byte("nonexistent"))
 	assert.False(t, found)
-	assert.Equal(t, "", val)
+	assert.Nil(t, val)
 
 	// But should find existing key
-	val, found = e.Get("existing")
+	val, found = e.Get([]byte("existing"))
 	assert.True(t, found)
-	assert.Equal(t, "value", val)
+	assert.True(t, bytes.Equal([]byte("value"), val))
 }
 
 func Test_ReadLatestFromMultipleSSTsInOneTier(t *testing.T) {
@@ -263,19 +264,19 @@ func Test_ReadLatestFromMultipleSSTsInOneTier(t *testing.T) {
 	e.SetMaxMemtableSize(1)
 
 	for i := range 2 {
-		key := fmt.Sprintf("key%d", i)
-		val := fmt.Sprintf("val%d", i)
+		key := []byte(fmt.Sprintf("key%d", i))
+		val := []byte(fmt.Sprintf("val%d", i))
 		require.NoError(t, e.Put(key, val))
 	}
 
 	// Update key0
-	require.NoError(t, e.Put("key0", "new"))
+	require.NoError(t, e.Put([]byte("key0"), []byte("new")))
 
 	time.Sleep(300 * time.Millisecond)
 
-	val, found := e.Get("key0")
+	val, found := e.Get([]byte("key0"))
 	require.True(t, found)
-	require.Equal(t, val, "new")
+	require.True(t, bytes.Equal([]byte("new"), val))
 }
 
 func TestCompaction_TriggersWhenThresholdExceeded(t *testing.T) {
@@ -290,7 +291,7 @@ func TestCompaction_TriggersWhenThresholdExceeded(t *testing.T) {
 	for i := range 3 {
 		key := fmt.Sprintf("key%d", i)
 		val := fmt.Sprintf("val%d", i)
-		require.NoError(t, e.Put(key, val))
+		require.NoError(t, e.Put([]byte(key), []byte(val)))
 	}
 
 	time.Sleep(300 * time.Millisecond)
@@ -311,17 +312,17 @@ func TestCompaction_MergedOutputContainsLatestValues(t *testing.T) {
 	e.SetMaxTablesPerTier(1)
 
 	// Write initial value
-	require.NoError(t, e.Put("a", "old"))
+	require.NoError(t, e.Put([]byte("a"), []byte("old")))
 	time.Sleep(50 * time.Millisecond)
 
 	// Overwrite it in a new SST
-	require.NoError(t, e.Put("a", "new"))
+	require.NoError(t, e.Put([]byte("a"), []byte("new")))
 	time.Sleep(300 * time.Millisecond)
 
 	// Compact should have happened
-	val, found := e.Get("a")
+	val, found := e.Get([]byte("a"))
 	assert.True(t, found)
-	assert.Equal(t, "new", val)
+	assert.True(t, bytes.Equal([]byte("new"), val))
 }
 
 func TestCompaction_RespectsDeletes(t *testing.T) {
@@ -334,16 +335,16 @@ func TestCompaction_RespectsDeletes(t *testing.T) {
 	e.SetMaxMemtableSize(1)
 	e.SetMaxTablesPerTier(2)
 
-	require.NoError(t, e.Put("x", "1"))
+	require.NoError(t, e.Put([]byte("x"), []byte("1")))
 	time.Sleep(50 * time.Millisecond)
 
-	require.NoError(t, e.Delete("x"))
+	require.NoError(t, e.Delete([]byte("x")))
 	time.Sleep(300 * time.Millisecond)
 
 	// Should NOT be found after compaction
-	val, found := e.Get("x")
+	val, found := e.Get([]byte("x"))
 	assert.False(t, found)
-	assert.Equal(t, "", val)
+	assert.Nil(t, val)
 }
 
 func TestCompaction_DeletesOldSSTables(t *testing.T) {
@@ -357,7 +358,7 @@ func TestCompaction_DeletesOldSSTables(t *testing.T) {
 	e.SetMaxTablesPerTier(2)
 
 	for i := range 3 {
-		require.NoError(t, e.Put(fmt.Sprintf("k%d", i), fmt.Sprintf("v%d", i)))
+		require.NoError(t, e.Put([]byte(fmt.Sprintf("k%d", i)), []byte(fmt.Sprintf("v%d", i))))
 	}
 
 	time.Sleep(500 * time.Millisecond)
@@ -380,7 +381,7 @@ func TestCompaction_WritesToCorrectTier(t *testing.T) {
 	e.SetMaxTablesPerTier(2)
 
 	for i := range 4 {
-		require.NoError(t, e.Put(fmt.Sprintf("k%d", i), fmt.Sprintf("v%d", i)))
+		require.NoError(t, e.Put(fmt.Appendf(nil, "k%d", i), fmt.Appendf(nil, "v%d", i)))
 	}
 
 	time.Sleep(500 * time.Millisecond)
@@ -404,13 +405,13 @@ func TestCompaction_CreatesValidMergedSSTable(t *testing.T) {
 	e.SetMaxMemtableSize(1)
 	e.SetMaxTablesPerTier(2)
 
-	require.NoError(t, e.Put("z", "last"))
+	require.NoError(t, e.Put([]byte("z"), []byte("last")))
 	time.Sleep(100 * time.Millisecond)
 
-	require.NoError(t, e.Put("z", "latest"))
+	require.NoError(t, e.Put([]byte("z"), []byte("latest")))
 	time.Sleep(400 * time.Millisecond)
 
-	require.NoError(t, e.Put("z", "last latest"))
+	require.NoError(t, e.Put([]byte("z"), []byte("last latest")))
 	time.Sleep(400 * time.Millisecond)
 
 	// Validate merged SST file in T1
@@ -427,7 +428,7 @@ func TestCompaction_CreatesValidMergedSSTable(t *testing.T) {
 	require.NoError(t, merged.OpenForRead())
 	val, err := merged.Lookup([]byte("z"))
 	require.NoError(t, err)
-	assert.Equal(t, []byte("last latest"), val)
+	assert.True(t, bytes.Equal([]byte("last latest"), val))
 	require.NoError(t, merged.Close())
 }
 
@@ -442,7 +443,7 @@ func TestCompaction_PromotesToHigherTiers(t *testing.T) {
 
 	// Insert enough keys to trigger multi-tier compaction
 	for i := range 5 {
-		require.NoError(t, e.Put(fmt.Sprintf("k%d", i), fmt.Sprintf("v%d", i)))
+		require.NoError(t, e.Put(fmt.Appendf(nil, "k%d", i), fmt.Appendf(nil, "v%d", i)))
 		time.Sleep(100 * time.Millisecond) // Give time for flush + compaction
 	}
 
@@ -452,9 +453,9 @@ func TestCompaction_PromotesToHigherTiers(t *testing.T) {
 	require.GreaterOrEqual(t, len(tiers), 3, "Expected compaction to reach tier T2")
 
 	// Check key still exists
-	val, found := e.Get("k0")
+	val, found := e.Get([]byte("k0"))
 	assert.True(t, found)
-	assert.Equal(t, "v0", val)
+	assert.True(t, bytes.Equal([]byte("v0"), val))
 
 	// Ensure at least one SSTable exists in T2
 	assert.GreaterOrEqual(t, len(tiers[2]), 1, "Expected SSTables in tier T2")
@@ -470,26 +471,26 @@ func TestEngine_WALReplay_MixedTombstones(t *testing.T) {
 		e := engine.NewEngine()
 		require.NoError(t, e.OpenDB(tmpDir))
 
-		require.NoError(t, e.Put("a", "1"))
-		require.NoError(t, e.Put("b", "2"))
-		require.NoError(t, e.Delete("a"))
-		require.NoError(t, e.Put("c", "3"))
-		require.NoError(t, e.Delete("b"))
+		require.NoError(t, e.Put([]byte("a"), []byte("1")))
+		require.NoError(t, e.Put([]byte("b"), []byte("2")))
+		require.NoError(t, e.Delete([]byte("a")))
+		require.NoError(t, e.Put([]byte("c"), []byte("3")))
+		require.NoError(t, e.Delete([]byte("b")))
 	}()
 
 	// Simulate restart
 	e := engine.NewEngine()
 	require.NoError(t, e.OpenDB(tmpDir))
 
-	val, found := e.Get("a")
+	val, found := e.Get([]byte("a"))
 	assert.False(t, found)
-	assert.Equal(t, "", val)
+	assert.Nil(t, val)
 
-	val, found = e.Get("b")
+	val, found = e.Get([]byte("b"))
 	assert.False(t, found)
-	assert.Equal(t, "", val)
+	assert.Nil(t, val)
 
-	val, found = e.Get("c")
+	val, found = e.Get([]byte("c"))
 	assert.True(t, found)
-	assert.Equal(t, "3", val)
+	assert.True(t, bytes.Equal([]byte("3"), val))
 }

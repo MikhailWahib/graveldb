@@ -1,9 +1,10 @@
 package sstable
 
 import (
-	"bytes"
 	"container/heap"
 	"fmt"
+
+	"github.com/MikhailWahib/graveldb/internal/shared"
 )
 
 // Merger combines multiple SSTables into a single SSTable
@@ -43,7 +44,7 @@ type iteratorHeap []*iteratorItem
 func (h iteratorHeap) Len() int { return len(h) }
 
 func (h iteratorHeap) Less(i, j int) bool {
-	keyCmp := bytes.Compare(h[i].key, h[j].key)
+	keyCmp := shared.CompareBytes(h[i].key, h[j].key)
 	if keyCmp != 0 {
 		return keyCmp < 0
 	}
@@ -99,7 +100,7 @@ func (m *Merger) Merge() error {
 	for ih.Len() > 0 {
 		item := heap.Pop(ih).(*iteratorItem)
 
-		if lastKey != nil && bytes.Equal(item.key, lastKey) {
+		if lastKey != nil && shared.CompareBytes(item.key, lastKey) == 0 {
 			if item.iter.Next() {
 				heap.Push(ih, &iteratorItem{
 					key:      item.iter.Key(),

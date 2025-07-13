@@ -14,13 +14,13 @@ type Memtable interface {
 	Entries() []Entry
 	// Put inserts a key-value pair into the memtable.
 	// Returns an error if the operation fails.
-	Put(key, value string) error
+	Put(key, value []byte) error
 	// Get retrieves the value associated with the key from the memtable.
 	// Returns the value and a boolean indicating if the key was found.
-	Get(key string) (string, bool)
+	Get(key []byte) ([]byte, bool)
 	// Delete removes the key from the memtable
 	// Returns an error if the operation fails.
-	Delete(key string) error
+	Delete(key []byte) error
 	// Size returns the size of the memtable in bytes.
 	Size() int
 	// Clear clears the memtable
@@ -51,7 +51,7 @@ func (m *SkiplistMemtable) Entries() []Entry {
 }
 
 // Put inserts or updates a key-value pair in the memtable
-func (m *SkiplistMemtable) Put(key, value string) error {
+func (m *SkiplistMemtable) Put(key, value []byte) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
@@ -60,7 +60,7 @@ func (m *SkiplistMemtable) Put(key, value string) error {
 }
 
 // Get retrieves a value from the memtable by key
-func (m *SkiplistMemtable) Get(key string) (string, bool) {
+func (m *SkiplistMemtable) Get(key []byte) ([]byte, bool) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 
@@ -68,7 +68,7 @@ func (m *SkiplistMemtable) Get(key string) (string, bool) {
 }
 
 // Delete marks a key from the memtable as removed with TOMBSTONE
-func (m *SkiplistMemtable) Delete(key string) error {
+func (m *SkiplistMemtable) Delete(key []byte) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 

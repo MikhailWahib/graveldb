@@ -144,7 +144,7 @@ func (e *Engine) Tiers() [][]*sstable.SSTable {
 }
 
 // Put inserts or updates a key-value pair in the database.
-func (e *Engine) Put(key, value string) error {
+func (e *Engine) Put(key, value []byte) error {
 	if err := e.wal.AppendPut(key, value); err != nil {
 		return err
 	}
@@ -170,12 +170,12 @@ func (e *Engine) Put(key, value string) error {
 }
 
 // Get retrieves the value for a given key, searching memtable and all SSTable tiers.
-func (e *Engine) Get(key string) (string, bool) {
+func (e *Engine) Get(key []byte) ([]byte, bool) {
 	// First check memtable
 	val, found := e.memtable.Get(key)
 	if found {
-		if val == memtable.TOMBSTONE {
-			return "", false
+		if string(val) == memtable.TOMBSTONE {
+			return nil, false
 		}
 		return val, true
 	}
@@ -193,7 +193,7 @@ func (e *Engine) Get(key string) (string, bool) {
 				continue
 			}
 
-			val, err := sst.Lookup([]byte(key))
+			val, err := sst.Lookup(key)
 
 			// Close immediately after lookup
 			if closeErr := sst.Close(); closeErr != nil {
@@ -202,18 +202,18 @@ func (e *Engine) Get(key string) (string, bool) {
 
 			if err == nil {
 				if string(val) == memtable.TOMBSTONE {
-					return "", false
+					return nil, false
 				}
-				return string(val), true
+				return val, true
 			}
 		}
 	}
 
-	return "", false
+	return nil, false
 }
 
 // Delete removes a key from the database.
-func (e *Engine) Delete(key string) error {
+func (e *Engine) Delete(key []byte) error {
 	if err := e.wal.AppendDelete(key); err != nil {
 		return err
 	}
@@ -237,7 +237,7 @@ func (e *Engine) flushMemtable(mt memtable.Memtable) error {
 	}
 
 	for _, entry := range entries {
-		if err := sst.AppendPut([]byte(entry.Key), []byte(entry.Value)); err != nil {
+		if err := sst.AppendPut(entry.Key, entry.Value); err != nil {
 			return fmt.Errorf("failed to append entry to SSTable: %w", err)
 		}
 	}

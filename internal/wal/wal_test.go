@@ -1,6 +1,7 @@
 package wal_test
 
 import (
+	"bytes"
 	"path/filepath"
 	"testing"
 
@@ -22,10 +23,10 @@ func TestWAL_BasicOperations(t *testing.T) {
 	w, err := wal.NewWAL(walPath)
 	require.NoError(t, err)
 
-	require.NoError(t, w.AppendPut("key1", "value1"))
-	require.NoError(t, w.AppendPut("key2", "value2"))
+	require.NoError(t, w.AppendPut([]byte("key1"), []byte("value1")))
+	require.NoError(t, w.AppendPut([]byte("key2"), []byte("value2")))
 
-	require.NoError(t, w.AppendDelete("key3"))
+	require.NoError(t, w.AppendDelete([]byte("key3")))
 
 	require.NoError(t, w.Close())
 
@@ -40,13 +41,13 @@ func TestWAL_Replay(t *testing.T) {
 
 	expected := []struct {
 		op    string
-		key   string
-		value string
+		key   []byte
+		value []byte
 	}{
-		{"put", "key1", "value1"},
-		{"put", "key2", "value2"},
-		{"delete", "key1", ""},
-		{"put", "key3", "value3"},
+		{"put", []byte("key1"), []byte("value1")},
+		{"put", []byte("key2"), []byte("value2")},
+		{"delete", []byte("key1"), []byte{}},
+		{"put", []byte("key3"), []byte("value3")},
 	}
 
 	for _, e := range expected {
@@ -77,8 +78,8 @@ func TestWAL_Replay(t *testing.T) {
 		}
 
 		assert.Equal(t, expectedType, entry.Type, "Entry type mismatch")
-		assert.Equal(t, e.key, entry.Key, "Key mismatch")
-		assert.Equal(t, e.value, entry.Value, "Value mismatch")
+		assert.True(t, bytes.Equal(e.key, entry.Key), "Key mismatch")
+		assert.True(t, bytes.Equal(e.value, entry.Value), "Value mismatch")
 	}
 
 	require.NoError(t, w.Close())
@@ -110,9 +111,9 @@ func TestWAL_LargeEntries(t *testing.T) {
 	largeValue := make([]byte, 4096)
 
 	// Write large entry
-	require.NoError(t, w.AppendPut(string(largeKey), string(largeValue)))
+	require.NoError(t, w.AppendPut(largeKey, largeValue))
 	// Write normal entry
-	require.NoError(t, w.AppendPut("small_key", "small_value"))
+	require.NoError(t, w.AppendPut([]byte("small_key"), []byte("small_value")))
 
 	require.NoError(t, w.Close())
 
@@ -126,12 +127,12 @@ func TestWAL_LargeEntries(t *testing.T) {
 	assert.Len(t, entries, 2)
 
 	// Verify large entry
-	assert.Equal(t, string(largeKey), entries[0].Key, "Large key mismatch")
-	assert.Equal(t, string(largeValue), entries[0].Value, "Large value mismatch")
+	assert.True(t, bytes.Equal(largeKey, entries[0].Key), "Large key mismatch")
+	assert.True(t, bytes.Equal(largeValue, entries[0].Value), "Large value mismatch")
 
 	// Verify small entry
-	assert.Equal(t, "small_key", entries[1].Key, "Small key mismatch")
-	assert.Equal(t, "small_value", entries[1].Value, "Small value mismatch")
+	assert.True(t, bytes.Equal([]byte("small_key"), entries[1].Key), "Small key mismatch")
+	assert.True(t, bytes.Equal([]byte("small_value"), entries[1].Value), "Small value mismatch")
 
 	require.NoError(t, w.Close())
 }
@@ -143,14 +144,14 @@ func TestWAL_Reopening(t *testing.T) {
 	w, err := wal.NewWAL(walPath)
 	require.NoError(t, err)
 
-	require.NoError(t, w.AppendPut("key1", "value1"))
+	require.NoError(t, w.AppendPut([]byte("key1"), []byte("value1")))
 	require.NoError(t, w.Close())
 
 	// Reopen and add more entries
 	w, err = wal.NewWAL(walPath)
 	require.NoError(t, err)
 
-	require.NoError(t, w.AppendPut("key2", "value2"))
+	require.NoError(t, w.AppendPut([]byte("key2"), []byte("value2")))
 	require.NoError(t, w.Close())
 
 	// Open and replay
@@ -161,10 +162,10 @@ func TestWAL_Reopening(t *testing.T) {
 	require.NoError(t, err)
 
 	assert.Len(t, entries, 2)
-	assert.Equal(t, "key1", entries[0].Key)
-	assert.Equal(t, "value1", entries[0].Value)
-	assert.Equal(t, "key2", entries[1].Key)
-	assert.Equal(t, "value2", entries[1].Value)
+	assert.True(t, bytes.Equal([]byte("key1"), entries[0].Key))
+	assert.True(t, bytes.Equal([]byte("value1"), entries[0].Value))
+	assert.True(t, bytes.Equal([]byte("key2"), entries[1].Key))
+	assert.True(t, bytes.Equal([]byte("value2"), entries[1].Value))
 
 	require.NoError(t, w.Close())
 }

@@ -12,8 +12,8 @@ import (
 // Entry represents a single write-ahead log entry
 type Entry struct {
 	Type  shared.EntryType
-	Key   string
-	Value string
+	Key   []byte
+	Value []byte
 }
 
 // WAL manages the write-ahead log file
@@ -46,7 +46,7 @@ func NewWAL(path string) (*WAL, error) {
 }
 
 // AppendPut appends a put operation to the WAL
-func (w *WAL) AppendPut(key, value string) error {
+func (w *WAL) AppendPut(key, value []byte) error {
 	return w.writeEntry(Entry{
 		Type:  shared.PutEntry,
 		Key:   key,
@@ -55,11 +55,11 @@ func (w *WAL) AppendPut(key, value string) error {
 }
 
 // AppendDelete appends a delete operation to the WAL
-func (w *WAL) AppendDelete(key string) error {
+func (w *WAL) AppendDelete(key []byte) error {
 	return w.writeEntry(Entry{
 		Type:  shared.DeleteEntry,
 		Key:   key,
-		Value: "",
+		Value: []byte{},
 	})
 }
 
@@ -108,8 +108,8 @@ func (w *WAL) Replay() ([]Entry, error) {
 
 		walEntry := Entry{
 			Type:  shared.EntryType(entry.Type),
-			Key:   string(entry.Key),
-			Value: string(entry.Value),
+			Key:   entry.Key,
+			Value: entry.Value,
 		}
 		walEntries = append(walEntries, walEntry)
 	}
