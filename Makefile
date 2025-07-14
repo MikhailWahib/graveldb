@@ -4,10 +4,7 @@ BIN_DIR = ./bin/tests
 
 $(shell mkdir -p $(BIN_DIR))
 
-test-all:
-	go test -race ./...
-
-test-all-v:
+test:
 	go test -race ./... -v
 
 compile-tests:
