@@ -25,6 +25,7 @@ type Engine struct {
 	wal              *wal.WAL
 	tiers            [][]*sstable.SSTable
 	compactionMgr    *CompactionManager
+	wg               sync.WaitGroup // WaitGroup for background flush/compaction
 	sstCounter       *atomic.Uint64
 	maxMemtableSize  int
 	maxTablesPerTier int
@@ -159,7 +160,9 @@ func (e *Engine) Put(key, value []byte) error {
 	if e.memtable.Size() > e.maxMemtableSize {
 		old := e.memtable
 		e.memtable = memtable.NewMemtable()
+		e.wg.Add(1)
 		go func() {
+			defer e.wg.Done()
 			if err := e.flushMemtable(old); err != nil {
 				log.Printf("flushMemtable error: %v", err)
 			}
@@ -264,7 +267,9 @@ func (e *Engine) flushMemtable(mt memtable.Memtable) error {
 
 	// Run compaction on T0 if needed
 	if shouldCompact {
+		e.wg.Add(1)
 		go func() {
+			defer e.wg.Done()
 			if err := e.compactionMgr.compactTiers(0); err != nil {
 				log.Printf("compaction error: %v", err)
 			}
@@ -286,4 +291,36 @@ func (e *Engine) SetMaxTablesPerTier(n int) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	e.maxTablesPerTier = n
+}
+
+// Close gracefully shuts down the engine, ensuring all data is persisted.
+// This method:
+//   - Flushes any remaining memtable data to disk
+//   - Closes the WAL file
+//   - Waits for any ongoing compaction operations to complete
+//
+// After calling Close, the engine should not be used for any operations.
+// Returns an error if any cleanup operation fails.
+func (e *Engine) Close() error {
+	// Flush any remaining memtable data
+	if e.memtable != nil && e.memtable.Size() > 0 {
+		old := e.memtable
+		e.memtable = memtable.NewMemtable()
+		// Flush synchronously to ensure data is persisted
+		if err := e.flushMemtable(old); err != nil {
+			return fmt.Errorf("failed to flush final memtable: %w", err)
+		}
+	}
+
+	// Close the WAL
+	if e.wal != nil {
+		if err := e.wal.Close(); err != nil {
+			return fmt.Errorf("failed to close WAL: %w", err)
+		}
+	}
+
+	// Wait for all background flush/compaction operations to finish
+	e.wg.Wait()
+
+	return nil
 }

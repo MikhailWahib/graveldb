@@ -494,3 +494,57 @@ func TestEngine_WALReplay_MixedTombstones(t *testing.T) {
 	assert.True(t, found)
 	assert.True(t, bytes.Equal([]byte("3"), val))
 }
+
+func TestEngine_Close_WaitsForBackgroundWork(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	e := engine.NewEngine()
+	require.NoError(t, e.OpenDB(tmpDir))
+	e.SetMaxMemtableSize(1)
+	e.SetMaxTablesPerTier(1)
+
+	// Write enough keys to trigger multiple flushes and compactions
+	for i := 0; i < 5; i++ {
+		key := []byte(fmt.Sprintf("key%d", i))
+		val := []byte(fmt.Sprintf("val%d", i))
+		require.NoError(t, e.Put(key, val))
+	}
+
+	// Call Close and ensure it waits for all background work
+	err := e.Close()
+	assert.NoError(t, err)
+
+	// Reopen engine and check all data is present
+	e2 := engine.NewEngine()
+	require.NoError(t, e2.OpenDB(tmpDir))
+	for i := 0; i < 5; i++ {
+		key := []byte(fmt.Sprintf("key%d", i))
+		val := []byte(fmt.Sprintf("val%d", i))
+		got, found := e2.Get(key)
+		assert.True(t, found, "Should find key after Close and reopen")
+		assert.True(t, bytes.Equal(val, got), "Value should match after Close and reopen")
+	}
+}
+
+func TestEngine_Close_FlushesMemtableEvenIfBelowThreshold(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	e := engine.NewEngine()
+	require.NoError(t, e.OpenDB(tmpDir))
+	e.SetMaxMemtableSize(1000) // Large enough so flush won't trigger automatically
+
+	key := []byte("unflushed_key")
+	val := []byte("unflushed_value")
+	require.NoError(t, e.Put(key, val))
+
+	// Do not trigger flush, just close
+	err := e.Close()
+	assert.NoError(t, err)
+
+	// Reopen engine and check the key is persisted
+	e2 := engine.NewEngine()
+	require.NoError(t, e2.OpenDB(tmpDir))
+	got, found := e2.Get(key)
+	assert.True(t, found, "Should find key after Close and reopen, even if memtable was not full")
+	assert.True(t, bytes.Equal(val, got), "Value should match after Close and reopen")
+}
