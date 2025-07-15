@@ -21,15 +21,14 @@ func TestWriteEntry(t *testing.T) {
 	key := []byte("mykey")
 	value := []byte("myvalue")
 	offset := int64(0)
+	entry := shared.Entry{
+		Type:  shared.PutEntry,
+		Key:   key,
+		Value: value,
+	}
 
 	// Write entry with prefix
-	newOffset, err := shared.WriteEntry(shared.Entry{
-		File:   f,
-		Offset: offset,
-		Type:   shared.PutEntry,
-		Key:    key,
-		Value:  value,
-	})
+	newOffset, err := shared.WriteEntry(entry, f, offset)
 	require.NoError(t, err)
 
 	expectedLen := 1 + 4 + 4 + len(key) + len(value)
@@ -62,15 +61,13 @@ func TestReadEntry(t *testing.T) {
 	key := []byte("mykey")
 	value := []byte("myvalue")
 	offset := int64(0)
-
+	e := shared.Entry{
+		Type:  shared.DeleteEntry,
+		Key:   key,
+		Value: value,
+	}
 	// Write entry with prefix
-	_, err = shared.WriteEntry(shared.Entry{
-		File:   f,
-		Offset: offset,
-		Type:   shared.DeleteEntry,
-		Key:    key,
-		Value:  value,
-	})
+	_, err = shared.WriteEntry(e, f, offset)
 	require.NoError(t, err)
 
 	// Read the entry back

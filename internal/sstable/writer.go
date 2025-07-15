@@ -43,7 +43,7 @@ func (w *sstWriter) Open(path string) error {
 
 // AppendPut writes a key-value pair to the SSTable
 func (w *sstWriter) AppendPut(key, value []byte) error {
-	return w.writeEntry(Entry{
+	return w.writeEntry(shared.Entry{
 		Type:  shared.PutEntry,
 		Key:   key,
 		Value: value,
@@ -52,7 +52,7 @@ func (w *sstWriter) AppendPut(key, value []byte) error {
 
 // AppendDelete writes a deletion marker for a key to the SSTable
 func (w *sstWriter) AppendDelete(key []byte) error {
-	return w.writeEntry(Entry{
+	return w.writeEntry(shared.Entry{
 		Type:  shared.DeleteEntry,
 		Key:   key,
 		Value: nil,
@@ -60,17 +60,11 @@ func (w *sstWriter) AppendDelete(key []byte) error {
 }
 
 // writeEntry writes a key-value pair to the data section
-func (w *sstWriter) writeEntry(e Entry) error {
+func (w *sstWriter) writeEntry(entry shared.Entry) error {
 	entryOffset := w.offset
 
-	// Write the entry prefixed with type byte and k,v lengths
-	n, err := shared.WriteEntry(shared.Entry{
-		File:   w.file,
-		Offset: w.offset,
-		Type:   e.Type,
-		Key:    e.Key,
-		Value:  e.Value,
-	})
+	// Write the entry prefixed with type byte and k,v
+	n, err := shared.WriteEntry(entry, w.file, w.offset)
 	if err != nil {
 		return err
 	}
@@ -78,7 +72,7 @@ func (w *sstWriter) writeEntry(e Entry) error {
 	w.offset = n
 
 	if w.count%indexInterval == 0 {
-		w.index = append(w.index, IndexEntry{Key: e.Key, Offset: entryOffset})
+		w.index = append(w.index, IndexEntry{Key: entry.Key, Offset: entryOffset})
 	}
 
 	w.count++
@@ -91,13 +85,12 @@ func (w *sstWriter) writeIndex() error {
 
 	for _, entry := range w.index {
 		// Write key with prefix using IndexEntry type
-		newOffset, err := shared.WriteEntry(shared.Entry{
-			File:   w.file,
-			Offset: w.offset,
-			Type:   shared.IndexEntry,
-			Key:    entry.Key,
-			Value:  nil,
-		})
+		e := shared.Entry{
+			Type:  shared.IndexEntry,
+			Key:   entry.Key,
+			Value: nil,
+		}
+		newOffset, err := shared.WriteEntry(e, w.file, w.offset)
 		if err != nil {
 			return err
 		}

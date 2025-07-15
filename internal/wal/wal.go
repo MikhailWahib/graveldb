@@ -9,13 +9,6 @@ import (
 	"github.com/MikhailWahib/graveldb/internal/shared"
 )
 
-// Entry represents a single write-ahead log entry
-type Entry struct {
-	Type  shared.EntryType
-	Key   []byte
-	Value []byte
-}
-
 // WAL manages the write-ahead log file
 type WAL struct {
 	mu sync.Mutex
@@ -25,7 +18,7 @@ type WAL struct {
 	writeOffset int64
 }
 
-// NewWAL creates a new WAL that uses DiskManager for file operations
+// NewWAL creates a new WAL
 func NewWAL(path string) (*WAL, error) {
 	file, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE, 0644)
 	if err != nil {
@@ -47,7 +40,7 @@ func NewWAL(path string) (*WAL, error) {
 
 // AppendPut appends a put operation to the WAL
 func (w *WAL) AppendPut(key, value []byte) error {
-	return w.writeEntry(Entry{
+	return w.writeEntry(shared.Entry{
 		Type:  shared.PutEntry,
 		Key:   key,
 		Value: value,
@@ -56,26 +49,19 @@ func (w *WAL) AppendPut(key, value []byte) error {
 
 // AppendDelete appends a delete operation to the WAL
 func (w *WAL) AppendDelete(key []byte) error {
-	return w.writeEntry(Entry{
+	return w.writeEntry(shared.Entry{
 		Type:  shared.DeleteEntry,
 		Key:   key,
 		Value: []byte{},
 	})
 }
 
-// writeEntry formats an entry and writes it using the file handle
-// Format: [1 byte Type][4 bytes KeyLen][4 bytes ValueLen][Key][Value]
-func (w *WAL) writeEntry(e Entry) error {
+// writeEntry writes an entry to the disk and immediately sync it
+func (w *WAL) writeEntry(e shared.Entry) error {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 
-	n, err := shared.WriteEntry(shared.Entry{
-		File:   w.file,
-		Offset: w.writeOffset,
-		Type:   shared.EntryType(e.Type),
-		Key:    []byte(e.Key),
-		Value:  []byte(e.Value),
-	})
+	n, err := shared.WriteEntry(e, w.file, w.writeOffset)
 	if err != nil {
 		return err
 	}
@@ -88,12 +74,12 @@ func (w *WAL) writeEntry(e Entry) error {
 }
 
 // Replay reads entries from the beginning, returning 0 offset at EOF
-func (w *WAL) Replay() ([]Entry, error) {
+func (w *WAL) Replay() ([]shared.Entry, error) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 
 	var offset int64
-	var walEntries []Entry
+	var walEntries []shared.Entry
 
 	for {
 		entry, err := shared.ReadEntry(w.file, offset)
@@ -106,7 +92,7 @@ func (w *WAL) Replay() ([]Entry, error) {
 		}
 		offset = entry.NewOffset
 
-		walEntry := Entry{
+		walEntry := shared.Entry{
 			Type:  shared.EntryType(entry.Type),
 			Key:   entry.Key,
 			Value: entry.Value,

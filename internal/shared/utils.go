@@ -8,17 +8,15 @@ import (
 
 // Entry represents a database entry to be written to storage
 type Entry struct {
-	File   *os.File
-	Offset int64
-	Type   EntryType
-	Key    []byte
-	Value  []byte
+	Type  EntryType
+	Key   []byte
+	Value []byte
 }
 
 // WriteEntry writes a key-value or key-only entry to the file using a length-prefixed format.
 // Format: [1 byte EntryType][4 bytes KeyLen][4 bytes ValueLen][Key][Value]
 // If value is nil or empty, only the key is written with ValueLen set to 0.
-func WriteEntry(e Entry) (int64, error) {
+func WriteEntry(e Entry, file *os.File, offset int64) (int64, error) {
 	keyLen := len(e.Key)
 	valueLen := len(e.Value)
 
@@ -32,12 +30,12 @@ func WriteEntry(e Entry) (int64, error) {
 		copy(buf[9+keyLen:], e.Value)
 	}
 
-	n, err := e.File.WriteAt(buf, e.Offset)
+	n, err := file.WriteAt(buf, offset)
 	if err != nil {
 		return 0, fmt.Errorf("failed to write entry: %w", err)
 	}
 
-	return e.Offset + int64(n), nil
+	return offset + int64(n), nil
 }
 
 // StoredEntry represents an entry read from storage

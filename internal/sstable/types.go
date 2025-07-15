@@ -1,7 +1,5 @@
 package sstable
 
-import "github.com/MikhailWahib/graveldb/internal/shared"
-
 // File format constants for SSTable
 const (
 	// IndexOffsetSize is the size in bytes of the index offset field
@@ -11,13 +9,6 @@ const (
 	// FooterSize is the total size of the SSTable footer
 	FooterSize = IndexOffsetSize + IndexSizeSize
 )
-
-// Entry represents a key-value entry in the SSTable
-type Entry struct {
-	Type  shared.EntryType
-	Key   []byte
-	Value []byte
-}
 
 // IndexEntry represents an entry in the sparse index
 type IndexEntry struct {
