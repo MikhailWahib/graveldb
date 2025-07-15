@@ -2,23 +2,19 @@
 // providing fast access to recently written data before it is persisted to disk.
 package memtable
 
-import "sync"
+import (
+	"sync"
 
-// TOMBSTONE represents a deletion marker in the memtable
-const TOMBSTONE = "TOMBSTONE"
+	"github.com/MikhailWahib/graveldb/internal/shared"
+)
 
-// Memtable defines the interface for an in-memory table that supports
-// basic key-value operations with durability guarantees
+// Memtable defines the interface for an in-memory table that supports basic operations
 type Memtable interface {
 	// Entries return all entries in the skiplist
-	Entries() []Entry
-	// Put inserts a key-value pair into the memtable.
-	// Returns an error if the operation fails.
+	Entries() []shared.Entry
 	Put(key, value []byte) error
-	// Get retrieves the value associated with the key from the memtable.
-	// Returns the value and a boolean indicating if the key was found.
-	Get(key []byte) ([]byte, bool)
-	// Delete removes the key from the memtable
+	Get(key []byte) (shared.Entry, bool)
+	// Delete marks the given key as deleted
 	// Returns an error if the operation fails.
 	Delete(key []byte) error
 	// Size returns the size of the memtable in bytes.
@@ -43,24 +39,24 @@ func NewMemtable() Memtable {
 }
 
 // Entries returns all entries in the skiplist memtable.
-func (m *SkiplistMemtable) Entries() []Entry {
+func (m *SkiplistMemtable) Entries() []shared.Entry {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 
 	return m.sl.Entries()
 }
 
-// Put inserts or updates a key-value pair in the memtable
+// Put inserts or updates an entry in the memtable
 func (m *SkiplistMemtable) Put(key, value []byte) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	m.sl.Put(key, value)
+	m.sl.Put(shared.Entry{Type: shared.PutEntry, Key: key, Value: value})
 	return nil
 }
 
-// Get retrieves a value from the memtable by key
-func (m *SkiplistMemtable) Get(key []byte) ([]byte, bool) {
+// Get retrieves an entry from the memtable by key
+func (m *SkiplistMemtable) Get(key []byte) (shared.Entry, bool) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 

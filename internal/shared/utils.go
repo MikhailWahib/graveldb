@@ -6,13 +6,6 @@ import (
 	"os"
 )
 
-// Entry represents a database entry to be written to storage
-type Entry struct {
-	Type  EntryType
-	Key   []byte
-	Value []byte
-}
-
 // WriteEntry writes a key-value or key-only entry to the file using a length-prefixed format.
 // Format: [1 byte EntryType][4 bytes KeyLen][4 bytes ValueLen][Key][Value]
 // If value is nil or empty, only the key is written with ValueLen set to 0.
@@ -38,22 +31,14 @@ func WriteEntry(e Entry, file *os.File, offset int64) (int64, error) {
 	return offset + int64(n), nil
 }
 
-// StoredEntry represents an entry read from storage
-type StoredEntry struct {
-	Type      EntryType
-	Key       []byte
-	Value     []byte
-	NewOffset int64
-}
-
 // ReadEntry reads a key-value entry from the file with a length-prefixed format.
 // Format: [1 byte EntryType][4 bytes KeyLen][4 bytes ValueLen][Key][Value]
-func ReadEntry(f *os.File, offset int64) (StoredEntry, error) {
+func ReadEntry(f *os.File, offset int64) (Entry, int64, error) {
 	// read the length of the EntryType key and value
 	lenBuf := make([]byte, PrefixSize)
 	_, err := f.ReadAt(lenBuf, offset)
 	if err != nil {
-		return StoredEntry{}, err
+		return Entry{}, 0, err
 	}
 
 	// Decode EntryType, key length and value length
@@ -68,23 +53,22 @@ func ReadEntry(f *os.File, offset int64) (StoredEntry, error) {
 	// Read key and value from file
 	_, err = f.ReadAt(key, offset+PrefixSize)
 	if err != nil {
-		return StoredEntry{}, err
+		return Entry{}, 0, err
 	}
 
 	_, err = f.ReadAt(value, offset+PrefixSize+int64(keyLen))
 	if err != nil {
-		return StoredEntry{}, err
+		return Entry{}, 0, err
 	}
 
 	// New offset is the position after the current entry
 	newOffset := offset + PrefixSize + int64(keyLen) + int64(valLen)
 
-	return StoredEntry{
-		Type:      entryType,
-		Key:       key,
-		Value:     value,
-		NewOffset: newOffset,
-	}, nil
+	return Entry{
+		Type:  entryType,
+		Key:   key,
+		Value: value,
+	}, newOffset, nil
 }
 
 // CompareBytes compares (a, b) bytes lexicographically

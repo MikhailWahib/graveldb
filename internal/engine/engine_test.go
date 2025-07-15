@@ -127,9 +127,9 @@ func TestMemtableFlush(t *testing.T) {
 	err = sst.OpenForRead()
 	require.NoError(t, err)
 
-	val, err := sst.Lookup([]byte("key1"))
+	entry, err := sst.Lookup([]byte("key1"))
 	require.NoError(t, err, "Expected key1 to be found in flushed SSTable with no errors")
-	require.True(t, bytes.Equal([]byte("value1"), val))
+	require.True(t, bytes.Equal([]byte("value1"), entry.Value))
 }
 
 func TestEngine_GetFromSSTable(t *testing.T) {
@@ -426,9 +426,9 @@ func TestCompaction_CreatesValidMergedSSTable(t *testing.T) {
 	}
 	require.NotNil(t, merged)
 	require.NoError(t, merged.OpenForRead())
-	val, err := merged.Lookup([]byte("z"))
+	entry, err := merged.Lookup([]byte("z"))
 	require.NoError(t, err)
-	assert.True(t, bytes.Equal([]byte("last latest"), val))
+	assert.True(t, bytes.Equal([]byte("last latest"), entry.Value))
 	require.NoError(t, merged.Close())
 }
 

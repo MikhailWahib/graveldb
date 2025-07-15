@@ -82,15 +82,15 @@ func (w *WAL) Replay() ([]shared.Entry, error) {
 	var walEntries []shared.Entry
 
 	for {
-		entry, err := shared.ReadEntry(w.file, offset)
+		entry, newOffset, err := shared.ReadEntry(w.file, offset)
 		if err != nil {
-			if err == io.EOF || entry.NewOffset == 0 {
+			if err == io.EOF || newOffset == 0 {
 				break
 			}
 
 			return nil, err
 		}
-		offset = entry.NewOffset
+		offset = newOffset
 
 		walEntry := shared.Entry{
 			Type:  shared.EntryType(entry.Type),

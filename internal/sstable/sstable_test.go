@@ -49,9 +49,9 @@ func TestSSTableWriteRead(t *testing.T) {
 
 	// Test lookup for each key
 	for _, data := range testData {
-		value, err := sst.Lookup([]byte(data.key))
+		entry, err := sst.Lookup([]byte(data.key))
 		assert.NoError(t, err)
-		assert.True(t, bytes.Equal(value, []byte(data.value)), "Value mismatch for %s: got %s, want %s", data.key, string(value), data.value)
+		assert.True(t, bytes.Equal(entry.Value, []byte(data.value)), "Value mismatch for %s: got %s, want %s", data.key, string(entry.Value), data.value)
 	}
 
 	// Test lookup for non-existent key
@@ -81,10 +81,10 @@ func TestSSTableEmptyValue(t *testing.T) {
 	err = sst.OpenForRead()
 	require.NoError(t, err)
 
-	value, err := sst.Lookup([]byte("key1"))
+	entry, err := sst.Lookup([]byte("key1"))
 	require.NoError(t, err)
 
-	assert.Empty(t, value)
+	assert.Empty(t, entry.Value)
 
 	require.NoError(t, sst.Close())
 }
@@ -126,16 +126,16 @@ func TestSSTableLargeKeyValues(t *testing.T) {
 	require.NoError(t, err)
 
 	// Check the large key/value
-	value, err := sst.Lookup(largeKey)
+	entry, err := sst.Lookup(largeKey)
 	require.NoError(t, err)
 
-	assert.True(t, bytes.Equal(value, largeValue), "Large value mismatch: lengths got %d, want %d", len(value), len(largeValue))
+	assert.True(t, bytes.Equal(entry.Value, largeValue), "Large value mismatch: lengths got %d, want %d", len(entry.Value), len(largeValue))
 
 	// Check we can still find the small key
-	smallValue, err := sst.Lookup([]byte("small-key"))
+	smallValueEntry, err := sst.Lookup([]byte("small-key"))
 	require.NoError(t, err)
 
-	assert.Equal(t, "small-value", string(smallValue))
+	assert.Equal(t, "small-value", string(smallValueEntry.Value))
 
 	require.NoError(t, sst.Close())
 }
@@ -206,14 +206,14 @@ func BenchmarkSSTableReading(b *testing.B) {
 		// Look up a random key
 		keyNum := i % 1000
 		key := fmt.Appendf(nil, "key-%d", keyNum)
-		value, err := sst.Lookup(key)
+		entry, err := sst.Lookup(key)
 		if err != nil {
 			b.Fatalf("Failed to lookup key: %v", err)
 		}
 
 		expectedValue := fmt.Appendf(nil, "value-%d", keyNum)
-		if !bytes.Equal(value, expectedValue) {
-			b.Fatalf("Value mismatch: got %s, want %s", string(value), string(expectedValue))
+		if !bytes.Equal(entry.Value, expectedValue) {
+			b.Fatalf("Value mismatch: got %s, want %s", string(entry.Value), string(expectedValue))
 		}
 	}
 }

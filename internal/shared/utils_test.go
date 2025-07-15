@@ -71,7 +71,7 @@ func TestReadEntry(t *testing.T) {
 	require.NoError(t, err)
 
 	// Read the entry back
-	entry, err := shared.ReadEntry(f, offset)
+	entry, newOffset, err := shared.ReadEntry(f, offset)
 	require.NoError(t, err)
 
 	// Validate key and value
@@ -80,6 +80,6 @@ func TestReadEntry(t *testing.T) {
 
 	expectedLen := 1 + 4 + 4 + len(key) + len(value)
 	expectedOffset := offset + int64(expectedLen)
-	assert.Equal(t, expectedOffset, entry.NewOffset, "unexpected new offset")
+	assert.Equal(t, expectedOffset, newOffset, "unexpected new offset")
 	assert.Equal(t, shared.DeleteEntry, shared.EntryType(entry.Type), "entry type mismatch")
 }

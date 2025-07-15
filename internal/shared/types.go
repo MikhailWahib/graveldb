@@ -11,3 +11,12 @@ const (
 	// IndexEntry indicates an index record in the SSTable
 	IndexEntry
 )
+
+// Entry represents a database entry to be written to storage
+type Entry struct {
+	Type  EntryType
+	Key   []byte
+	Value []byte
+}
+
+// TODO: add a Size() method

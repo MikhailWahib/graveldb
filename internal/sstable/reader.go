@@ -58,21 +58,21 @@ func (r *sstReader) Open(filename string) error {
 	end := indexOffset + indexSize
 
 	for offset < end {
-		entry, err := shared.ReadEntry(r.file, offset)
+		entry, newOffset, err := shared.ReadEntry(r.file, offset)
 		if err != nil {
 			return fmt.Errorf("failed to read index entry: %w", err)
 		}
 
 		// Read offset immediately after key
 		offsetBuf := make([]byte, 8)
-		_, err = r.file.ReadAt(offsetBuf, entry.NewOffset)
+		_, err = r.file.ReadAt(offsetBuf, newOffset)
 		if err != nil {
 			return fmt.Errorf("failed to read index offset: %w", err)
 		}
 
 		dataOffset := int64(binary.BigEndian.Uint64(offsetBuf))
 		index = append(r.index, IndexEntry{Key: entry.Key, Offset: dataOffset})
-		offset = entry.NewOffset + 8
+		offset = newOffset + 8
 	}
 
 	r.index = index
@@ -85,14 +85,14 @@ func (r *sstReader) Close() error {
 }
 
 // Lookup performs a binary search over the sparse index and returns the entry if found
-func (r *sstReader) Lookup(key []byte) ([]byte, error) {
+func (r *sstReader) Lookup(key []byte) (shared.Entry, error) {
 	// Find index entry with key <= target
 	pos := sort.Search(len(r.index), func(i int) bool {
 		return shared.CompareBytes(r.index[i].Key, key) > 0
 	}) - 1
 
 	if pos < 0 {
-		return nil, fmt.Errorf("key not found: %s", key)
+		return shared.Entry{}, fmt.Errorf("key not found: %s", key)
 	}
 
 	// Calculate the block boundary
@@ -103,25 +103,25 @@ func (r *sstReader) Lookup(key []byte) ([]byte, error) {
 
 	// Linear scan within the block boundaries
 	offset := r.index[pos].Offset
-	var lastValue []byte
+	var lastValue shared.Entry
 	var foundDeleted bool
 
 	for offset < blockEnd {
-		entry, err := shared.ReadEntry(r.file, offset)
+		entry, newOffset, err := shared.ReadEntry(r.file, offset)
 		if err != nil {
 			if err == io.EOF {
 				break
 			}
-			return nil, fmt.Errorf("failed to read entry: %w", err)
+			return shared.Entry{}, fmt.Errorf("failed to read entry: %w", err)
 		}
 
 		cmp := shared.CompareBytes(entry.Key, key)
 		if cmp == 0 {
 			if shared.EntryType(entry.Type) == shared.DeleteEntry {
 				foundDeleted = true
-				lastValue = nil
+				lastValue = shared.Entry{}
 			} else {
-				lastValue = entry.Value
+				lastValue = entry
 				foundDeleted = false
 			}
 		}
@@ -130,11 +130,11 @@ func (r *sstReader) Lookup(key []byte) ([]byte, error) {
 			break
 		}
 
-		offset = entry.NewOffset
+		offset = newOffset
 	}
 
-	if foundDeleted || lastValue == nil {
-		return nil, fmt.Errorf("key not found: %s", key)
+	if foundDeleted || lastValue.Value == nil {
+		return shared.Entry{}, fmt.Errorf("key not found: %s", key)
 	}
 	return lastValue, nil
 }
@@ -143,7 +143,7 @@ func (r *sstReader) Lookup(key []byte) ([]byte, error) {
 type Iterator struct {
 	reader  *sstReader
 	offset  int64
-	entry   *shared.StoredEntry
+	entry   *shared.Entry
 	dataEnd int64
 	err     error
 }
@@ -163,7 +163,7 @@ func (it *Iterator) Next() bool {
 		return false
 	}
 
-	entry, err := shared.ReadEntry(it.reader.file, it.offset)
+	entry, newOffset, err := shared.ReadEntry(it.reader.file, it.offset)
 	if err != nil {
 		if err == io.EOF {
 			it.entry = nil
@@ -174,7 +174,7 @@ func (it *Iterator) Next() bool {
 	}
 
 	it.entry = &entry
-	it.offset = entry.NewOffset
+	it.offset = newOffset
 	return true
 }
 

@@ -175,14 +175,16 @@ func (e *Engine) Put(key, value []byte) error {
 // Get retrieves the value for a given key, searching memtable and all SSTable tiers.
 func (e *Engine) Get(key []byte) ([]byte, bool) {
 	// First check memtable
-	val, found := e.memtable.Get(key)
+	entry, found := e.memtable.Get(key)
 	if found {
-		if string(val) == memtable.TOMBSTONE {
+		// If found and marked as deleted, return immediately
+		if entry.Type == shared.DeleteEntry {
 			return nil, false
 		}
-		return val, true
+		return entry.Value, true
 	}
 
+	// Not found in memtable, search in disk
 	e.mu.RLock()
 	defer e.mu.RUnlock()
 
@@ -196,7 +198,7 @@ func (e *Engine) Get(key []byte) ([]byte, bool) {
 				continue
 			}
 
-			val, err := sst.Lookup(key)
+			entry, err := sst.Lookup(key)
 
 			// Close immediately after lookup
 			if closeErr := sst.Close(); closeErr != nil {
@@ -204,10 +206,10 @@ func (e *Engine) Get(key []byte) ([]byte, bool) {
 			}
 
 			if err == nil {
-				if string(val) == memtable.TOMBSTONE {
+				if entry.Type == shared.DeleteEntry {
 					return nil, false
 				}
-				return val, true
+				return entry.Value, true
 			}
 		}
 	}

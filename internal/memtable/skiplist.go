@@ -12,11 +12,10 @@ const (
 	probability = 0.5
 )
 
-// SkipListNode represents a node in the skip list data structure,
-// containing the key-value pair and links to other nodes
+// SkipListNode represents a node in the skip list data structure
 type SkipListNode struct {
 	key   []byte
-	value []byte
+	entry shared.Entry
 	next  []*SkipListNode
 }
 
@@ -32,10 +31,10 @@ type SkipList struct {
 
 // NewSkipListNode creates a new SkipListNode with the given key, value, and level.
 // It initializes the 'next' slice to the correct length for the node's level.
-func NewSkipListNode(key, value []byte, level int) *SkipListNode {
+func NewSkipListNode(key []byte, entry shared.Entry, level int) *SkipListNode {
 	return &SkipListNode{
 		key:   key,
-		value: value,
+		entry: entry,
 		next:  make([]*SkipListNode, level),
 	}
 }
@@ -44,7 +43,7 @@ func NewSkipListNode(key, value []byte, level int) *SkipListNode {
 // The list is seeded with a pseudo-random generator and a head node with maxLevel pointers.
 func NewSkipList() *SkipList {
 	return &SkipList{
-		head:     NewSkipListNode([]byte{}, []byte{}, maxLevel),
+		head:     NewSkipListNode([]byte{}, shared.Entry{}, maxLevel),
 		level:    1,
 		maxLevel: maxLevel,
 		size:     0,
@@ -52,21 +51,15 @@ func NewSkipList() *SkipList {
 	}
 }
 
-// Entry represents a key-value pair in the skiplist.
-type Entry struct {
-	Key   []byte
-	Value []byte
-}
-
 // Entries return all entries in the skiplist
-func (sl *SkipList) Entries() []Entry {
-	var result []Entry
+func (sl *SkipList) Entries() []shared.Entry {
+	var result []shared.Entry
 	current := sl.head.next[0]
 
 	for current != nil {
-		result = append(result, Entry{
+		result = append(result, shared.Entry{
 			Key:   current.key,
-			Value: current.value,
+			Value: current.entry.Value,
 		})
 		current = current.next[0]
 	}
@@ -84,12 +77,11 @@ func (sl *SkipList) randomLevel() int {
 }
 
 // Put inserts a new key-value pair into the SkipList or updates the value if the key already exists.
-func (sl *SkipList) Put(key, value []byte) {
-	// Create update array to store path
+func (sl *SkipList) Put(entry shared.Entry) {
+	key := entry.Key
 	update := make([]*SkipListNode, sl.maxLevel)
 	current := sl.head
 
-	// Find all predecessor nodes at each level
 	for i := sl.level - 1; i >= 0; i-- {
 		for current.next[i] != nil && shared.CompareBytes(current.next[i].key, key) < 0 {
 			current = current.next[i]
@@ -97,16 +89,12 @@ func (sl *SkipList) Put(key, value []byte) {
 		update[i] = current
 	}
 
-	// Get lowest level pointer to the node
 	current = current.next[0]
-
-	// If key exists, update the value
 	if current != nil && shared.CompareBytes(current.key, key) == 0 {
-		current.value = value
+		current.entry = entry
 		return
 	}
 
-	// Create new node with random level
 	newLevel := sl.randomLevel()
 	if newLevel > sl.level {
 		for i := sl.level; i < newLevel; i++ {
@@ -115,20 +103,22 @@ func (sl *SkipList) Put(key, value []byte) {
 		sl.level = newLevel
 	}
 
-	newNode := NewSkipListNode(key, value, newLevel)
-
-	// Insert the node at each level
+	newNode := &SkipListNode{
+		key:   key,
+		entry: entry,
+		next:  make([]*SkipListNode, newLevel),
+	}
 	for i := range newLevel {
 		newNode.next[i] = update[i].next[i]
 		update[i].next[i] = newNode
 	}
 
-	sl.size += len(key) + len(value)
+	sl.size += len(entry.Key) + len(entry.Value)
 }
 
 // Get retrieves the value associated with a given key.
 // Returns the value and true if found, otherwise returns nil and false.
-func (sl *SkipList) Get(key []byte) ([]byte, bool) {
+func (sl *SkipList) Get(key []byte) (shared.Entry, bool) {
 	current := sl.head
 
 	// Start from the highest level and work down
@@ -141,25 +131,23 @@ func (sl *SkipList) Get(key []byte) ([]byte, bool) {
 	// Check the node at level 0
 	current = current.next[0]
 	if current != nil && shared.CompareBytes(current.key, key) == 0 {
-		return current.value, true
+		return current.entry, true
 	}
-
-	return nil, false
+	return shared.Entry{}, false
 }
 
 // Delete marks a key as deleted in the skiplist by setting its value to TOMBSTONE.
 func (sl *SkipList) Delete(key []byte) error {
-	val, _ := sl.Get(key)
+	entry, _ := sl.Get(key)
 
 	// Ignore the case where the key is already deleted
-	if string(val) == TOMBSTONE {
+	if entry.Type == shared.DeleteEntry {
 		return nil
 	}
 
-	sl.Put(key, []byte(TOMBSTONE))
+	sl.Put(shared.Entry{Type: shared.DeleteEntry, Key: key, Value: nil})
 
-	sl.size -= len(val)
-	sl.size += len(TOMBSTONE)
+	sl.size -= len(entry.Value)
 	return nil
 }
 

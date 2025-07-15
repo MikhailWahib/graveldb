@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"os"
 	"sync"
+
+	"github.com/MikhailWahib/graveldb/internal/shared"
 )
 
 // SSTable provides a unified interface for SSTable operations,
@@ -68,12 +70,12 @@ func (sst *SSTable) OpenForWrite() error {
 }
 
 // Lookup performs a lookup in read mode
-func (sst *SSTable) Lookup(key []byte) ([]byte, error) {
+func (sst *SSTable) Lookup(key []byte) (shared.Entry, error) {
 	sst.mu.RLock()
 	defer sst.mu.RUnlock()
 
 	if !sst.isReading {
-		return nil, fmt.Errorf("SSTable is not open for reading")
+		return shared.Entry{}, fmt.Errorf("SSTable is not open for reading")
 	}
 	return sst.reader.Lookup(key)
 }
