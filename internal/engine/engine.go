@@ -196,8 +196,7 @@ func (e *Engine) Get(key []byte) ([]byte, bool) {
 
 	// Search all tiers, newest to oldest
 	for _, tier := range e.tiers {
-		// for i := len(tier) - 1; i >= 0; i-- {
-		for i := range len(tier) {
+		for i := len(tier) - 1; i >= 0; i-- {
 			reader := tier[i]
 
 			// Use the new Get method instead of Lookup

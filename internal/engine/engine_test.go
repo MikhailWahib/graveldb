@@ -261,11 +261,11 @@ func Test_ReadLatestFromMultipleSSTsInOneTier(t *testing.T) {
 		key := fmt.Appendf(nil, "key%d", i)
 		val := fmt.Appendf(nil, "val%d", i)
 		require.NoError(t, e.Put(key, val))
+		e.WaitForFlush()
 	}
 
 	// Update key0
 	require.NoError(t, e.Put([]byte("key0"), []byte("new")))
-
 	e.WaitForFlush()
 
 	val, found := e.Get([]byte("key0"))
@@ -376,6 +376,7 @@ func TestCompaction_WritesToCorrectTier(t *testing.T) {
 
 	for i := range 4 {
 		require.NoError(t, e.Put(fmt.Appendf(nil, "k%d", i), fmt.Appendf(nil, "v%d", i)))
+		e.WaitForFlush()
 	}
 
 	e.WaitForFlush()
@@ -502,6 +503,7 @@ func TestEngine_Close_WaitsForBackgroundWork(t *testing.T) {
 		key := fmt.Appendf(nil, "key%d", i)
 		val := fmt.Appendf(nil, "val%d", i)
 		require.NoError(t, e.Put(key, val))
+		e.WaitForFlush()
 	}
 
 	// Call Close and ensure it waits for all background work
