@@ -6,7 +6,6 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
-	"time"
 
 	"github.com/MikhailWahib/graveldb/internal/engine"
 	"github.com/MikhailWahib/graveldb/internal/sstable"
@@ -61,6 +60,9 @@ func TestEngine_WALReplay(t *testing.T) {
 		require.NoError(t, err)
 		err = e.Delete([]byte("a"))
 		require.NoError(t, err)
+
+		err = e.Close()
+		require.NoError(t, err)
 	}()
 
 	// Simulate restart (replay WAL)
@@ -112,8 +114,7 @@ func TestMemtableFlush(t *testing.T) {
 	err = e.Put([]byte("key1"), []byte("value1"))
 	require.NoError(t, err)
 
-	// Wait a bit to ensure background flush finishes
-	time.Sleep(100 * time.Millisecond)
+	e.WaitForFlush()
 
 	// Check SSTable file exists
 	sstPath := filepath.Join(tmpDir, "sstables", "T0", "000001.sst")
@@ -144,7 +145,7 @@ func TestEngine_GetFromSSTable(t *testing.T) {
 	require.NoError(t, err)
 
 	// Wait for flush to complete
-	time.Sleep(100 * time.Millisecond)
+	e.WaitForFlush()
 
 	e.SetMaxMemtableSize(100)
 
@@ -165,8 +166,6 @@ func TestEngine_GetFromSSTable(t *testing.T) {
 func TestEngine_GetDeletedFromSSTable(t *testing.T) {
 	tmpDir := t.TempDir()
 
-	// Force flush immediately
-
 	e := engine.NewEngine()
 	err := e.OpenDB(tmpDir)
 	require.NoError(t, err)
@@ -179,8 +178,7 @@ func TestEngine_GetDeletedFromSSTable(t *testing.T) {
 	err = e.Delete([]byte("deleted_key"))
 	require.NoError(t, err)
 
-	// Wait for flush
-	time.Sleep(100 * time.Millisecond)
+	e.WaitForFlush()
 
 	// Should not find the deleted key
 	val, found := e.Get([]byte("deleted_key"))
@@ -213,7 +211,7 @@ func TestEngine_SSTCounterRestoration(t *testing.T) {
 	require.NoError(t, err)
 
 	// Wait for flush
-	time.Sleep(100 * time.Millisecond)
+	e.WaitForFlush()
 
 	// Should create 000006.sst (next after highest existing 000005.sst)
 	newSSTPath := filepath.Join(t0Dir, "000006.sst")
@@ -237,7 +235,7 @@ func TestEngine_NonExistentKey(t *testing.T) {
 	err = e.Put([]byte("existing"), []byte("value"))
 	require.NoError(t, err)
 
-	time.Sleep(100 * time.Millisecond)
+	e.WaitForFlush()
 
 	// Still shouldn't find non-existent key
 	val, found = e.Get([]byte("nonexistent"))
@@ -260,19 +258,19 @@ func Test_ReadLatestFromMultipleSSTsInOneTier(t *testing.T) {
 	e.SetMaxMemtableSize(1)
 
 	for i := range 2 {
-		key := []byte(fmt.Sprintf("key%d", i))
-		val := []byte(fmt.Sprintf("val%d", i))
+		key := fmt.Appendf(nil, "key%d", i)
+		val := fmt.Appendf(nil, "val%d", i)
 		require.NoError(t, e.Put(key, val))
 	}
 
 	// Update key0
 	require.NoError(t, e.Put([]byte("key0"), []byte("new")))
 
-	time.Sleep(300 * time.Millisecond)
+	e.WaitForFlush()
 
 	val, found := e.Get([]byte("key0"))
 	require.True(t, found)
-	require.True(t, bytes.Equal([]byte("new"), val))
+	require.Equal(t, "new", string(val))
 }
 
 func TestCompaction_TriggersWhenThresholdExceeded(t *testing.T) {
@@ -290,7 +288,7 @@ func TestCompaction_TriggersWhenThresholdExceeded(t *testing.T) {
 		require.NoError(t, e.Put([]byte(key), []byte(val)))
 	}
 
-	time.Sleep(300 * time.Millisecond)
+	e.WaitForFlush()
 
 	tiers := e.Tiers()
 	require.True(t, len(tiers) > 1)
@@ -309,11 +307,11 @@ func TestCompaction_MergedOutputContainsLatestValues(t *testing.T) {
 
 	// Write initial value
 	require.NoError(t, e.Put([]byte("a"), []byte("old")))
-	time.Sleep(50 * time.Millisecond)
+	e.WaitForFlush()
 
 	// Overwrite it in a new SST
 	require.NoError(t, e.Put([]byte("a"), []byte("new")))
-	time.Sleep(300 * time.Millisecond)
+	e.WaitForFlush()
 
 	// Compact should have happened
 	val, found := e.Get([]byte("a"))
@@ -332,10 +330,10 @@ func TestCompaction_RespectsDeletes(t *testing.T) {
 	e.SetMaxTablesPerTier(2)
 
 	require.NoError(t, e.Put([]byte("x"), []byte("1")))
-	time.Sleep(50 * time.Millisecond)
+	e.WaitForFlush()
 
 	require.NoError(t, e.Delete([]byte("x")))
-	time.Sleep(300 * time.Millisecond)
+	e.WaitForFlush()
 
 	// Should NOT be found after compaction
 	val, found := e.Get([]byte("x"))
@@ -357,7 +355,7 @@ func TestCompaction_DeletesOldSSTables(t *testing.T) {
 		require.NoError(t, e.Put([]byte(fmt.Sprintf("k%d", i)), []byte(fmt.Sprintf("v%d", i))))
 	}
 
-	time.Sleep(500 * time.Millisecond)
+	e.WaitForFlush()
 
 	tier0 := e.Tiers()[0]
 	for _, sst := range tier0 {
@@ -380,7 +378,7 @@ func TestCompaction_WritesToCorrectTier(t *testing.T) {
 		require.NoError(t, e.Put(fmt.Appendf(nil, "k%d", i), fmt.Appendf(nil, "v%d", i)))
 	}
 
-	time.Sleep(500 * time.Millisecond)
+	e.WaitForFlush()
 
 	tiers := e.Tiers()
 	assert.GreaterOrEqual(t, len(tiers), 2)
@@ -402,13 +400,13 @@ func TestCompaction_CreatesValidMergedSSTable(t *testing.T) {
 	e.SetMaxTablesPerTier(2)
 
 	require.NoError(t, e.Put([]byte("z"), []byte("last")))
-	time.Sleep(100 * time.Millisecond)
+	e.WaitForFlush()
 
 	require.NoError(t, e.Put([]byte("z"), []byte("latest")))
-	time.Sleep(400 * time.Millisecond)
+	e.WaitForFlush()
 
 	require.NoError(t, e.Put([]byte("z"), []byte("last latest")))
-	time.Sleep(400 * time.Millisecond)
+	e.WaitForFlush()
 
 	// Validate merged SST file in T1
 	tiers := e.Tiers()
@@ -439,10 +437,10 @@ func TestCompaction_PromotesToHigherTiers(t *testing.T) {
 	// Insert enough keys to trigger multi-tier compaction
 	for i := range 5 {
 		require.NoError(t, e.Put(fmt.Appendf(nil, "k%d", i), fmt.Appendf(nil, "v%d", i)))
-		time.Sleep(100 * time.Millisecond) // Give time for flush + compaction
+		e.WaitForFlush()
 	}
 
-	time.Sleep(1 * time.Second) // Ensure all compactions finish
+	e.WaitForFlush()
 
 	tiers := e.Tiers()
 	require.GreaterOrEqual(t, len(tiers), 3, "Expected compaction to reach tier T2")
@@ -471,6 +469,7 @@ func TestEngine_WALReplay_MixedTombstones(t *testing.T) {
 		require.NoError(t, e.Delete([]byte("a")))
 		require.NoError(t, e.Put([]byte("c"), []byte("3")))
 		require.NoError(t, e.Delete([]byte("b")))
+		require.NoError(t, e.Close())
 	}()
 
 	// Simulate restart

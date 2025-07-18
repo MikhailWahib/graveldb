@@ -122,3 +122,25 @@ func DecodeEntry(buf []byte) (Entry, int, error) {
 		Value: value,
 	}, totalLen, nil
 }
+
+// SerializeEntry converts an Entry to a byte slice
+func SerializeEntry(e Entry) []byte {
+	keyLen := len(e.Key)
+	valLen := len(e.Value)
+	totalSize := PrefixSize + keyLen + valLen
+
+	buf := make([]byte, totalSize)
+
+	buf[0] = byte(e.Type)
+
+	binary.BigEndian.PutUint32(buf[EntryTypeSize:EntryTypeSize+LengthSize], uint32(keyLen))
+	binary.BigEndian.PutUint32(buf[EntryTypeSize+LengthSize:PrefixSize], uint32(valLen))
+
+	copy(buf[PrefixSize:], e.Key)
+
+	if valLen > 0 {
+		copy(buf[PrefixSize+keyLen:], e.Value)
+	}
+
+	return buf
+}

@@ -128,7 +128,6 @@ func (e *Engine) parseTiers() error {
 			}
 
 			path := filepath.Join(sstDir, file.Name())
-			// Use the new Reader API
 			reader, err := sstable.NewReader(path)
 			if err != nil {
 				log.Printf("failed to open SSTable for read: %v", err)
@@ -197,8 +196,9 @@ func (e *Engine) Get(key []byte) ([]byte, bool) {
 
 	// Search all tiers, newest to oldest
 	for _, tier := range e.tiers {
-		for i := len(tier) - 1; i >= 0; i-- {
-			reader := tier[i] // Changed from sst to reader
+		// for i := len(tier) - 1; i >= 0; i-- {
+		for i := range len(tier) {
+			reader := tier[i]
 
 			// Use the new Get method instead of Lookup
 			entry, err := reader.Get(key)
@@ -240,7 +240,6 @@ func (e *Engine) flushMemtable(mt memtable.Memtable) error {
 	defer writer.Close()
 
 	for _, entry := range entries {
-		// Use Put instead of AppendPut
 		if err := writer.PutEntry(entry.Key, entry.Value); err != nil {
 			return fmt.Errorf("failed to put entry to SSTable: %w", err)
 		}
@@ -335,4 +334,9 @@ func (e *Engine) Close() error {
 	e.wg.Wait()
 
 	return nil
+}
+
+// WaitForFlush waits for all flushed to be done (for tests)
+func (e *Engine) WaitForFlush() {
+	e.wg.Wait()
 }
