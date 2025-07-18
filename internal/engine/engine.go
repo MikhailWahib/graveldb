@@ -236,11 +236,6 @@ func (e *Engine) flushMemtable(mt memtable.Memtable) error {
 	if err != nil {
 		return err
 	}
-	defer func() {
-		if err := writer.Close(); err != nil {
-			log.Printf("failed to close writer: %v", err)
-		}
-	}()
 
 	for _, entry := range entries {
 		if err := writer.PutEntry(entry.Key, entry.Value); err != nil {
