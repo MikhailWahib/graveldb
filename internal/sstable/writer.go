@@ -156,7 +156,7 @@ func (w *Writer) Finish() error {
 func (w *Writer) Close() error {
 	if !w.finished {
 		if err := w.Finish(); err != nil {
-			w.file.Close()
+			_ = w.file.Close()
 			return err
 		}
 	}
@@ -165,7 +165,9 @@ func (w *Writer) Close() error {
 
 // Delete removes the SSTable file from disk
 func (w *Writer) Delete() error {
-	w.Close()
+	if err := w.Close(); err != nil {
+		return err
+	}
 	return os.Remove(w.path)
 }
 

@@ -34,7 +34,7 @@ func NewReader(path string) (*Reader, error) {
 	}
 
 	if err := reader.loadIndex(); err != nil {
-		file.Close()
+		_ = file.Close()
 		return nil, fmt.Errorf("failed to load index: %w", err)
 	}
 

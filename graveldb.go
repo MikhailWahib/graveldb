@@ -36,7 +36,7 @@ import (
 // DB represents a thread-safe GravelDB instance.
 // It provides methods for storing, retrieving, and deleting key-value pairs,
 // as well as configuration options for tuning performance.
-type db struct {
+type DB struct {
 	engine *engine.Engine
 }
 
@@ -46,43 +46,43 @@ type db struct {
 // it will be opened with its data loaded.
 //
 // Returns a DB instance or an error if the database can't be opened.
-func Open(path string) (*db, error) {
+func Open(path string) (*DB, error) {
 	e := engine.NewEngine()
 	if err := e.OpenDB(path); err != nil {
 		return nil, err
 	}
-	return &db{engine: e}, nil
+	return &DB{engine: e}, nil
 }
 
 // Put writes a key-value pair to the database.
 // Overwrites the value if the key already exists.
 //
 // Both key and value must be non-nil. Returns an error if the operation fails.
-func (db *db) Put(key, value []byte) error {
+func (db *DB) Put(key, value []byte) error {
 	return db.engine.Put(key, value)
 }
 
 // Get retrieves the value for a given key.
 // Returns the value and true if found, or nil and false if the key doesn't exist.
-func (db *db) Get(key []byte) ([]byte, bool) {
+func (db *DB) Get(key []byte) ([]byte, bool) {
 	return db.engine.Get(key)
 }
 
 // Delete removes the key and its value from the database.
 // Returns an error only if the deletion fails.
-func (db *db) Delete(key []byte) error {
+func (db *DB) Delete(key []byte) error {
 	return db.engine.Delete(key)
 }
 
 // SetMaxMemtableSize sets the memtable flush threshold in bytes.
 // Higher values improve write throughput at the cost of memory and recovery time.
-func (db *db) SetMaxMemtableSize(sizeInBytes int) {
+func (db *DB) SetMaxMemtableSize(sizeInBytes int) {
 	db.engine.SetMaxMemtableSize(sizeInBytes)
 }
 
 // SetMaxTablesPerTier sets the SSTable compaction threshold per tier.
 // Lower values trigger more frequent compactions, improving read performance.
-func (db *db) SetMaxTablesPerTier(n int) {
+func (db *DB) SetMaxTablesPerTier(n int) {
 	db.engine.SetMaxTablesPerTier(n)
 }
 
@@ -101,6 +101,6 @@ func (db *db) SetMaxTablesPerTier(n int) {
 //	defer db.Close()
 //
 // Returns an error if any cleanup operation fails.
-func (db *db) Close() error {
+func (db *DB) Close() error {
 	return db.engine.Close()
 }
