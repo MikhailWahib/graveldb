@@ -2,6 +2,8 @@
 package wal
 
 import (
+	"bufio"
+	"errors"
 	"io"
 	"os"
 	"sync"
@@ -61,7 +63,7 @@ func (w *WAL) writeEntry(e shared.Entry) error {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 
-	n, err := shared.WriteEntry(e, w.file, w.writeOffset)
+	n, err := shared.WriteEntryAt(e, w.file, w.writeOffset)
 	if err != nil {
 		return err
 	}
@@ -78,26 +80,28 @@ func (w *WAL) Replay() ([]shared.Entry, error) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 
-	var offset int64
+	_, err := w.file.Seek(0, io.SeekStart)
+	if err != nil {
+		return nil, err
+	}
+	reader := bufio.NewReader(w.file)
+
 	var walEntries []shared.Entry
 
 	for {
-		entry, newOffset, err := shared.ReadEntry(w.file, offset)
+		entry, err := shared.ReadEntryFromReader(reader)
 		if err != nil {
-			if err == io.EOF || newOffset == 0 {
+			if errors.Is(err, io.EOF) {
 				break
 			}
-
 			return nil, err
 		}
-		offset = newOffset
 
-		walEntry := shared.Entry{
-			Type:  shared.EntryType(entry.Type),
+		walEntries = append(walEntries, shared.Entry{
+			Type:  entry.Type,
 			Key:   entry.Key,
 			Value: entry.Value,
-		}
-		walEntries = append(walEntries, walEntry)
+		})
 	}
 
 	return walEntries, nil

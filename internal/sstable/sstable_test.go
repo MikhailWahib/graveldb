@@ -27,14 +27,13 @@ func TestSSTableWriteRead(t *testing.T) {
 	tempDir := t.TempDir()
 	sstPath := filepath.Join(tempDir, "01.sst")
 
-	// Create the SSTable
-	sst := sstable.NewSSTable(sstPath)
-	err := sst.OpenForWrite()
+	// Create and write to SSTable
+	sst, err := sstable.NewWriter(sstPath)
 	require.NoError(t, err)
 
 	// Write entries
 	for _, data := range testData {
-		err = sst.AppendPut([]byte(data.key), []byte(data.value))
+		err = sst.PutEntry([]byte(data.key), []byte(data.value))
 		require.NoError(t, err)
 	}
 
@@ -42,23 +41,25 @@ func TestSSTableWriteRead(t *testing.T) {
 	err = sst.Finish()
 	require.NoError(t, err)
 
+	err = sst.Close()
+	require.NoError(t, err)
+
 	// Read the SSTable
-	sst = sstable.NewSSTable(sstPath)
-	err = sst.OpenForRead()
+	sstReader, err := sstable.NewReader(sstPath)
 	require.NoError(t, err)
 
 	// Test lookup for each key
 	for _, data := range testData {
-		entry, err := sst.Lookup([]byte(data.key))
+		entry, err := sstReader.Get([]byte(data.key))
 		assert.NoError(t, err)
 		assert.True(t, bytes.Equal(entry.Value, []byte(data.value)), "Value mismatch for %s: got %s, want %s", data.key, string(entry.Value), data.value)
 	}
 
 	// Test lookup for non-existent key
-	_, err = sst.Lookup([]byte("nonexistent"))
+	_, err = sstReader.Get([]byte("nonexistent"))
 	assert.Error(t, err)
 
-	require.NoError(t, sst.Close())
+	require.NoError(t, sstReader.Close())
 }
 
 func TestSSTableEmptyValue(t *testing.T) {
@@ -66,27 +67,28 @@ func TestSSTableEmptyValue(t *testing.T) {
 	sstPath := filepath.Join(tempDir, "empty_value.sst")
 
 	// Create SSTable with empty values
-	sst := sstable.NewSSTable(sstPath)
-	err := sst.OpenForWrite()
+	sst, err := sstable.NewWriter(sstPath)
 	require.NoError(t, err)
 
-	err = sst.AppendPut([]byte("key1"), []byte(""))
+	err = sst.PutEntry([]byte("key1"), []byte(""))
 	require.NoError(t, err)
 
 	err = sst.Finish()
 	require.NoError(t, err)
 
-	// Read the SSTable
-	sst = sstable.NewSSTable(sstPath)
-	err = sst.OpenForRead()
+	err = sst.Close()
 	require.NoError(t, err)
 
-	entry, err := sst.Lookup([]byte("key1"))
+	// Read the SSTable
+	sstReader, err := sstable.NewReader(sstPath)
+	require.NoError(t, err)
+
+	entry, err := sstReader.Get([]byte("key1"))
 	require.NoError(t, err)
 
 	assert.Empty(t, entry.Value)
 
-	require.NoError(t, sst.Close())
+	require.NoError(t, sstReader.Close())
 }
 
 func TestSSTableLargeKeyValues(t *testing.T) {
@@ -94,8 +96,7 @@ func TestSSTableLargeKeyValues(t *testing.T) {
 	sstPath := filepath.Join(tempDir, "large_data.sst")
 
 	// Create SSTable with large values
-	sst := sstable.NewSSTable(sstPath)
-	err := sst.OpenForWrite()
+	sst, err := sstable.NewWriter(sstPath)
 	require.NoError(t, err)
 
 	// Create a 100KB value
@@ -110,34 +111,36 @@ func TestSSTableLargeKeyValues(t *testing.T) {
 		largeKey[i] = byte((i * 7) % 256)
 	}
 
-	err = sst.AppendPut(largeKey, largeValue)
+	err = sst.PutEntry(largeKey, largeValue)
 	require.NoError(t, err)
 
 	// Add a normal key after the large one
-	err = sst.AppendPut([]byte("small-key"), []byte("small-value"))
+	err = sst.PutEntry([]byte("small-key"), []byte("small-value"))
 	require.NoError(t, err)
 
 	err = sst.Finish()
 	require.NoError(t, err)
 
+	err = sst.Close()
+	require.NoError(t, err)
+
 	// Read the SSTable
-	sst = sstable.NewSSTable(sstPath)
-	err = sst.OpenForRead()
+	sstReader, err := sstable.NewReader(sstPath)
 	require.NoError(t, err)
 
 	// Check the large key/value
-	entry, err := sst.Lookup(largeKey)
+	entry, err := sstReader.Get(largeKey)
 	require.NoError(t, err)
 
 	assert.True(t, bytes.Equal(entry.Value, largeValue), "Large value mismatch: lengths got %d, want %d", len(entry.Value), len(largeValue))
 
 	// Check we can still find the small key
-	smallValueEntry, err := sst.Lookup([]byte("small-key"))
+	smallValueEntry, err := sstReader.Get([]byte("small-key"))
 	require.NoError(t, err)
 
 	assert.Equal(t, "small-value", string(smallValueEntry.Value))
 
-	require.NoError(t, sst.Close())
+	require.NoError(t, sstReader.Close())
 }
 
 func BenchmarkSSTableWriting(b *testing.B) {
@@ -145,8 +148,7 @@ func BenchmarkSSTableWriting(b *testing.B) {
 		b.StopTimer()
 		tempDir := b.TempDir()
 		sstPath := filepath.Join(tempDir, "bench_write.sst")
-		sst := sstable.NewSSTable(sstPath)
-		err := sst.OpenForWrite()
+		sst, err := sstable.NewWriter(sstPath)
 		if err != nil {
 			b.Fatalf("Failed to open SSTable for write: %v", err)
 		}
@@ -156,7 +158,7 @@ func BenchmarkSSTableWriting(b *testing.B) {
 		for j := range 1000 {
 			key := fmt.Appendf(nil, "key-%d", j)
 			value := fmt.Appendf(nil, "value-%d", j)
-			err := sst.AppendPut(key, value)
+			err := sst.PutEntry(key, value)
 
 			if err != nil {
 				b.Fatalf("Failed to write entry: %v", err)
@@ -167,6 +169,11 @@ func BenchmarkSSTableWriting(b *testing.B) {
 		if err != nil {
 			b.Fatalf("Failed to finish SSTable: %v", err)
 		}
+
+		err = sst.Close()
+		if err != nil {
+			b.Fatalf("Failed to close SSTable: %v", err)
+		}
 	}
 }
 
@@ -175,8 +182,7 @@ func BenchmarkSSTableReading(b *testing.B) {
 	sstPath := filepath.Join(tempDir, "bench_read.sst")
 
 	// Create a benchmark SSTable first
-	sst := sstable.NewSSTable(sstPath)
-	err := sst.OpenForWrite()
+	sst, err := sstable.NewWriter(sstPath)
 	if err != nil {
 		b.Fatalf("Failed to open SSTable for write: %v", err)
 	}
@@ -185,7 +191,7 @@ func BenchmarkSSTableReading(b *testing.B) {
 	for j := range 1000 {
 		key := fmt.Appendf(nil, "key-%d", j)
 		value := fmt.Appendf(nil, "value-%d", j)
-		err := sst.AppendPut(key, value)
+		err := sst.PutEntry(key, value)
 		if err != nil {
 			b.Fatalf("Failed to write entry: %v", err)
 		}
@@ -194,10 +200,13 @@ func BenchmarkSSTableReading(b *testing.B) {
 	if err != nil {
 		b.Fatalf("Failed to finish SSTable: %v", err)
 	}
+	err = sst.Close()
+	if err != nil {
+		b.Fatalf("Failed to close SSTable: %v", err)
+	}
 
 	// Now benchmark lookups
-	sst = sstable.NewSSTable(sstPath)
-	err = sst.OpenForRead()
+	sstReader, err := sstable.NewReader(sstPath)
 	if err != nil {
 		b.Fatalf("Failed to open SSTable for read: %v", err)
 	}
@@ -206,7 +215,7 @@ func BenchmarkSSTableReading(b *testing.B) {
 		// Look up a random key
 		keyNum := i % 1000
 		key := fmt.Appendf(nil, "key-%d", keyNum)
-		entry, err := sst.Lookup(key)
+		entry, err := sstReader.Get(key)
 		if err != nil {
 			b.Fatalf("Failed to lookup key: %v", err)
 		}
@@ -223,51 +232,51 @@ func TestNonExistentKeyLookup(t *testing.T) {
 	sstPath := filepath.Join(tempDir, "test_missing.sst")
 
 	// Create the SSTable with some entries
-	sst := sstable.NewSSTable(sstPath)
-	err := sst.OpenForWrite()
+	sst, err := sstable.NewWriter(sstPath)
 	require.NoError(t, err)
 
-	err = sst.AppendPut([]byte("a"), []byte("apple"))
+	err = sst.PutEntry([]byte("a"), []byte("apple"))
 	require.NoError(t, err)
-	err = sst.AppendPut([]byte("c"), []byte("cherry"))
+	err = sst.PutEntry([]byte("c"), []byte("cherry"))
 	require.NoError(t, err)
-	err = sst.AppendPut([]byte("e"), []byte("eheee"))
+	err = sst.PutEntry([]byte("e"), []byte("eheee"))
 	require.NoError(t, err)
 
 	err = sst.Finish()
 	require.NoError(t, err)
 
+	err = sst.Close()
+	require.NoError(t, err)
+
 	// Read the SSTable
-	sst = sstable.NewSSTable(sstPath)
-	err = sst.OpenForRead()
+	sstReader, err := sstable.NewReader(sstPath)
 	require.NoError(t, err)
 
 	// Test lookup for keys that don't exist but are within range
 	testMissingKeys := []string{"b", "d", "f"}
 	for _, key := range testMissingKeys {
-		_, err := sst.Lookup([]byte(key))
+		_, err := sstReader.Get([]byte(key))
 		assert.Error(t, err, "Expected error for missing key %s, got nil", key)
 	}
 
 	// Test keys that are completely out of range
 	outOfRangeKeys := []string{"0", "z"}
 	for _, key := range outOfRangeKeys {
-		_, err := sst.Lookup([]byte(key))
+		_, err := sstReader.Get([]byte(key))
 		assert.Error(t, err, "Expected error for out-of-range key %s, got nil", key)
 	}
 
-	require.NoError(t, sst.Close())
+	require.NoError(t, sstReader.Close())
 }
 
 func Test_DeleteSST(t *testing.T) {
 	tempDir := t.TempDir()
 	sstPath := filepath.Join(tempDir, "delete-test.sst")
 
-	sst := sstable.NewSSTable(sstPath)
-	err := sst.OpenForWrite()
+	sst, err := sstable.NewWriter(sstPath)
 	require.NoError(t, err)
 
-	err = sst.AppendPut([]byte("key"), []byte("value"))
+	err = sst.PutEntry([]byte("key"), []byte("value"))
 	require.NoError(t, err)
 
 	err = sst.Finish()
@@ -278,8 +287,7 @@ func Test_DeleteSST(t *testing.T) {
 	require.NoError(t, err)
 
 	// Attempt to read the SSTable
-	sst = sstable.NewSSTable(sstPath)
-	err = sst.OpenForRead()
+	_, err = sstable.NewReader(sstPath)
 	require.Error(t, err)
 }
 
@@ -288,8 +296,7 @@ func TestSSTableIterator(t *testing.T) {
 	sstPath := filepath.Join(tempDir, "test_iterator.sst")
 
 	// Create the SSTable with some entries
-	sst := sstable.NewSSTable(sstPath)
-	err := sst.OpenForWrite()
+	sst, err := sstable.NewWriter(sstPath)
 	require.NoError(t, err)
 
 	// Define test cases
@@ -299,19 +306,19 @@ func TestSSTableIterator(t *testing.T) {
 		typ   shared.EntryType
 	}{
 		{[]byte("a"), []byte("apple"), shared.PutEntry},
-		// {[]byte("b"), nil, shared.DeleteEntry},
+		{[]byte("b"), nil, shared.DeleteEntry},
 		{[]byte("c"), []byte("cherry"), shared.PutEntry},
 		{[]byte("d"), []byte("date"), shared.PutEntry},
-		// {[]byte("e"), nil, shared.DeleteEntry},
+		{[]byte("e"), nil, shared.DeleteEntry},
 	}
 
 	// Write entries
 	for _, tc := range testCases {
 		if tc.typ == shared.PutEntry {
-			err = sst.AppendPut(tc.key, tc.value)
+			err = sst.PutEntry(tc.key, tc.value)
 			require.NoError(t, err)
 		} else {
-			err = sst.AppendDelete(tc.key)
+			err = sst.DeleteEntry(tc.key)
 			require.NoError(t, err)
 		}
 	}
@@ -319,14 +326,15 @@ func TestSSTableIterator(t *testing.T) {
 	err = sst.Finish()
 	require.NoError(t, err)
 
+	err = sst.Close()
+	require.NoError(t, err)
+
 	// Read the SSTable
-	err = sst.OpenForRead()
+	sstReader, err := sstable.NewReader(sstPath)
 	require.NoError(t, err)
 
 	// Test iteration
-	iter, err := sst.NewIterator()
-	require.NoError(t, err)
-	require.NotNil(t, iter)
+	iter := sstReader.NewIterator()
 
 	// Check each entry
 	for i, tc := range testCases {
@@ -340,7 +348,7 @@ func TestSSTableIterator(t *testing.T) {
 	require.False(t, iter.Next())
 	assert.NoError(t, iter.Error())
 
-	require.NoError(t, sst.Close())
+	require.NoError(t, sstReader.Close())
 }
 
 func TestSSTableEmptyIterator(t *testing.T) {
@@ -348,43 +356,47 @@ func TestSSTableEmptyIterator(t *testing.T) {
 	sstPath := filepath.Join(tempDir, "test_empty_iterator.sst")
 
 	// Create an empty SSTable
-	sst := sstable.NewSSTable(sstPath)
-	err := sst.OpenForWrite()
+	sst, err := sstable.NewWriter(sstPath)
 	require.NoError(t, err)
 
 	err = sst.Finish()
 	require.NoError(t, err)
 
+	err = sst.Close()
+	require.NoError(t, err)
+
 	// Read the SSTable
-	err = sst.OpenForRead()
+	sstReader, err := sstable.NewReader(sstPath)
 	require.NoError(t, err)
 
 	// Test iteration on empty SSTable
-	iter, err := sst.NewIterator()
-	require.NoError(t, err)
-	require.NotNil(t, iter)
+	iter := sstReader.NewIterator()
 
 	// No entries should be present
 	require.False(t, iter.Next())
 	assert.NoError(t, iter.Error())
 
-	require.NoError(t, sst.Close())
+	require.NoError(t, sstReader.Close())
 }
 
-func createSST(t *testing.T, path string, entries []entry) *sstable.SSTable {
-	sst := sstable.NewSSTable(path)
-	require.NoError(t, sst.OpenForWrite())
+func createSST(t *testing.T, path string, entries []entry) *sstable.Reader {
+	sst, err := sstable.NewWriter(path)
+	require.NoError(t, err)
 
 	for _, e := range entries {
 		if e.typ == shared.PutEntry {
-			require.NoError(t, sst.AppendPut([]byte(e.key), []byte(e.value)))
+			require.NoError(t, sst.PutEntry([]byte(e.key), []byte(e.value)))
 		} else {
-			require.NoError(t, sst.AppendDelete([]byte(e.key)))
+			require.NoError(t, sst.DeleteEntry([]byte(e.key)))
 		}
 	}
 	require.NoError(t, sst.Finish())
-	require.NoError(t, sst.OpenForRead())
-	return sst
+	require.NoError(t, sst.Close())
+
+	// Reopen for reading
+	sstReader, err := sstable.NewReader(path)
+	require.NoError(t, err)
+	return sstReader
 }
 
 type entry struct {
@@ -416,8 +428,8 @@ func TestMerger_MergesCorrectly(t *testing.T) {
 
 	// Setup output SSTable
 	outputPath := filepath.Join(tempDir, "merged.sst")
-	outputSST := sstable.NewSSTable(outputPath)
-	require.NoError(t, outputSST.OpenForWrite())
+	outputSST, err := sstable.NewWriter(outputPath)
+	require.NoError(t, err)
 
 	// Merge
 	merger := sstable.NewMerger()
@@ -427,10 +439,12 @@ func TestMerger_MergesCorrectly(t *testing.T) {
 
 	require.NoError(t, merger.Merge())
 
-	// Read merged SSTable
-	require.NoError(t, outputSST.OpenForRead())
-	iter, err := outputSST.NewIterator()
+	// Close and reopen for reading
+	require.NoError(t, outputSST.Close())
+	outputSSTReader, err := sstable.NewReader(outputPath)
 	require.NoError(t, err)
+
+	iter := outputSSTReader.NewIterator()
 
 	expected := []entry{
 		{"a", "1", shared.PutEntry},
@@ -457,7 +471,7 @@ func TestMerger_MergesCorrectly(t *testing.T) {
 
 	assert.Equal(t, len(expected), i, "entry count mismatch")
 	assert.NoError(t, iter.Error())
-	require.NoError(t, outputSST.Close())
+	require.NoError(t, outputSSTReader.Close())
 }
 
 func TestMerger_MultipleSSTablesMerge(t *testing.T) {
@@ -493,8 +507,8 @@ func TestMerger_MultipleSSTablesMerge(t *testing.T) {
 
 	// Output SSTable
 	mergedPath := filepath.Join(tempDir, "merged_multi.sst")
-	output := sstable.NewSSTable(mergedPath)
-	require.NoError(t, output.OpenForWrite())
+	output, err := sstable.NewWriter(mergedPath)
+	require.NoError(t, err)
 
 	// Merge
 	merger := sstable.NewMerger()
@@ -505,10 +519,12 @@ func TestMerger_MultipleSSTablesMerge(t *testing.T) {
 	merger.SetOutput(output)
 	require.NoError(t, merger.Merge())
 
-	// Open result for reading
-	require.NoError(t, output.OpenForRead())
-	iter, err := output.NewIterator()
+	// Close and reopen for reading
+	require.NoError(t, output.Close())
+	outputReader, err := sstable.NewReader(mergedPath)
 	require.NoError(t, err)
+
+	iter := outputReader.NewIterator()
 
 	// Expected after merge
 	expected := []entry{
@@ -538,5 +554,5 @@ func TestMerger_MultipleSSTablesMerge(t *testing.T) {
 
 	assert.Equal(t, len(expected), i, "Entry count mismatch")
 	assert.NoError(t, iter.Error())
-	require.NoError(t, output.Close())
+	require.NoError(t, outputReader.Close())
 }

@@ -1,33 +1,32 @@
 package sstable
 
 import (
+	"bytes"
 	"container/heap"
 	"fmt"
-
-	"github.com/MikhailWahib/graveldb/internal/shared"
 )
 
 // Merger combines multiple SSTables into a single SSTable
 type Merger struct {
-	sources []*SSTable
-	output  *SSTable
+	sources []*Reader
+	output  *Writer
 }
 
 // NewMerger creates a new SSTable merger
 func NewMerger() *Merger {
 	return &Merger{
-		sources: make([]*SSTable, 0),
+		sources: make([]*Reader, 0),
 	}
 }
 
 // AddSource adds a source SSTable to be merged
-func (m *Merger) AddSource(sst *SSTable) error {
+func (m *Merger) AddSource(sst *Reader) error {
 	m.sources = append(m.sources, sst)
 	return nil
 }
 
 // SetOutput sets the output SSTable for the merge result
-func (m *Merger) SetOutput(sst *SSTable) {
+func (m *Merger) SetOutput(sst *Writer) {
 	m.output = sst
 }
 
@@ -44,7 +43,7 @@ type iteratorHeap []*iteratorItem
 func (h iteratorHeap) Len() int { return len(h) }
 
 func (h iteratorHeap) Less(i, j int) bool {
-	keyCmp := shared.CompareBytes(h[i].key, h[j].key)
+	keyCmp := bytes.Compare(h[i].key, h[j].key)
 	if keyCmp != 0 {
 		return keyCmp < 0
 	}
@@ -80,10 +79,7 @@ func (m *Merger) Merge() error {
 	// Reverse assign priority: 0 = newest, N = oldest
 	for i := len(m.sources) - 1; i >= 0; i-- {
 		source := m.sources[i]
-		iter, err := source.NewIterator()
-		if err != nil {
-			return err
-		}
+		iter := source.NewIterator()
 		if iter.Next() {
 			heap.Push(ih, &iteratorItem{
 				key:      iter.Key(),
@@ -100,7 +96,7 @@ func (m *Merger) Merge() error {
 	for ih.Len() > 0 {
 		item := heap.Pop(ih).(*iteratorItem)
 
-		if lastKey != nil && shared.CompareBytes(item.key, lastKey) == 0 {
+		if lastKey != nil && bytes.Equal(item.key, lastKey) {
 			if item.iter.Next() {
 				heap.Push(ih, &iteratorItem{
 					key:      item.iter.Key(),
@@ -116,11 +112,11 @@ func (m *Merger) Merge() error {
 
 		// Write current key to output
 		if item.deleted {
-			if err := m.output.AppendDelete(item.key); err != nil {
+			if err := m.output.DeleteEntry(item.key); err != nil {
 				return err
 			}
 		} else {
-			if err := m.output.AppendPut(item.key, item.value); err != nil {
+			if err := m.output.PutEntry(item.key, item.value); err != nil {
 				return err
 			}
 		}
@@ -144,6 +140,6 @@ func (m *Merger) Merge() error {
 
 // Reset clears the merger
 func (m *Merger) Reset() {
-	m.sources = make([]*SSTable, 0)
+	m.sources = make([]*Reader, 0)
 	m.output = nil
 }

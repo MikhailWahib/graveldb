@@ -102,8 +102,6 @@ func TestEngine_OpenDB_ParseLevels(t *testing.T) {
 func TestMemtableFlush(t *testing.T) {
 	tmpDir := t.TempDir()
 
-	// Lower threshold for easier testing
-
 	e := engine.NewEngine()
 	err := e.OpenDB(tmpDir)
 	require.NoError(t, err)
@@ -123,11 +121,10 @@ func TestMemtableFlush(t *testing.T) {
 	require.NoError(t, err, "Expected SSTable file to exist")
 
 	// Try to open it and read contents
-	sst := sstable.NewSSTable(sstPath)
-	err = sst.OpenForRead()
+	sst, err := sstable.NewReader(sstPath)
 	require.NoError(t, err)
 
-	entry, err := sst.Lookup([]byte("key1"))
+	entry, err := sst.Get([]byte("key1"))
 	require.NoError(t, err, "Expected key1 to be found in flushed SSTable with no errors")
 	require.True(t, bytes.Equal([]byte("value1"), entry.Value))
 }
@@ -135,12 +132,11 @@ func TestMemtableFlush(t *testing.T) {
 func TestEngine_GetFromSSTable(t *testing.T) {
 	tmpDir := t.TempDir()
 
-	// Force flush immediately
-
 	e := engine.NewEngine()
 	err := e.OpenDB(tmpDir)
 	require.NoError(t, err)
 
+	// Force flush immediately
 	e.SetMaxMemtableSize(1)
 
 	// Put key to trigger flush
@@ -365,8 +361,8 @@ func TestCompaction_DeletesOldSSTables(t *testing.T) {
 
 	tier0 := e.Tiers()[0]
 	for _, sst := range tier0 {
-		_, err := os.Stat(sst.GetPath())
-		assert.Error(t, err, "Expected SST to be deleted: %s", sst.GetPath())
+		_, err := os.Stat(sst.Path())
+		assert.Error(t, err, "Expected SST to be deleted: %s", sst.Path())
 	}
 }
 
@@ -391,7 +387,7 @@ func TestCompaction_WritesToCorrectTier(t *testing.T) {
 	assert.Greater(t, len(tiers[1]), 0)
 
 	for _, sst := range tiers[1] {
-		assert.Contains(t, sst.GetPath(), "T1")
+		assert.Contains(t, sst.Path(), "T1")
 	}
 }
 
@@ -417,16 +413,15 @@ func TestCompaction_CreatesValidMergedSSTable(t *testing.T) {
 	// Validate merged SST file in T1
 	tiers := e.Tiers()
 	require.Equal(t, len(tiers), 2)
-	var merged *sstable.SSTable
+	var merged *sstable.Reader
 	for _, s := range tiers[1] {
-		if filepath.Base(s.GetPath()) != "" {
+		if filepath.Base(s.Path()) != "" {
 			merged = s
 			break
 		}
 	}
 	require.NotNil(t, merged)
-	require.NoError(t, merged.OpenForRead())
-	entry, err := merged.Lookup([]byte("z"))
+	entry, err := merged.Get([]byte("z"))
 	require.NoError(t, err)
 	assert.True(t, bytes.Equal([]byte("last latest"), entry.Value))
 	require.NoError(t, merged.Close())
@@ -460,7 +455,7 @@ func TestCompaction_PromotesToHigherTiers(t *testing.T) {
 	// Ensure at least one SSTable exists in T2
 	assert.GreaterOrEqual(t, len(tiers[2]), 1, "Expected SSTables in tier T2")
 	for _, sst := range tiers[2] {
-		assert.Contains(t, sst.GetPath(), "T2")
+		assert.Contains(t, sst.Path(), "T2")
 	}
 }
 
@@ -504,9 +499,9 @@ func TestEngine_Close_WaitsForBackgroundWork(t *testing.T) {
 	e.SetMaxTablesPerTier(1)
 
 	// Write enough keys to trigger multiple flushes and compactions
-	for i := 0; i < 5; i++ {
-		key := []byte(fmt.Sprintf("key%d", i))
-		val := []byte(fmt.Sprintf("val%d", i))
+	for i := range 5 {
+		key := fmt.Appendf(nil, "key%d", i)
+		val := fmt.Appendf(nil, "val%d", i)
 		require.NoError(t, e.Put(key, val))
 	}
 
@@ -517,9 +512,9 @@ func TestEngine_Close_WaitsForBackgroundWork(t *testing.T) {
 	// Reopen engine and check all data is present
 	e2 := engine.NewEngine()
 	require.NoError(t, e2.OpenDB(tmpDir))
-	for i := 0; i < 5; i++ {
-		key := []byte(fmt.Sprintf("key%d", i))
-		val := []byte(fmt.Sprintf("val%d", i))
+	for i := range 5 {
+		key := fmt.Appendf(nil, "key%d", i)
+		val := fmt.Appendf(nil, "val%d", i)
 		got, found := e2.Get(key)
 		assert.True(t, found, "Should find key after Close and reopen")
 		assert.True(t, bytes.Equal(val, got), "Value should match after Close and reopen")

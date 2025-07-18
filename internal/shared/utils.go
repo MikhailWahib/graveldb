@@ -1,20 +1,21 @@
 package shared
 
 import (
+	"bufio"
 	"encoding/binary"
 	"fmt"
+	"io"
 	"os"
 )
 
-// WriteEntry writes a key-value or key-only entry to the file using a length-prefixed format.
+// WriteEntryAt writes an entry to the given file at the specified offset using a length-prefixed format.
 // Format: [1 byte EntryType][4 bytes KeyLen][4 bytes ValueLen][Key][Value]
-// If value is nil or empty, only the key is written with ValueLen set to 0.
-func WriteEntry(e Entry, file *os.File, offset int64) (int64, error) {
+// If the value is nil or empty, only the key is written with ValueLen set to 0.
+func WriteEntryAt(e Entry, file *os.File, offset int64) (int64, error) {
 	keyLen := len(e.Key)
 	valueLen := len(e.Value)
 
-	buf := make([]byte, PrefixSize+keyLen+valueLen) // 1 byte EntryType + 4 bytes keyLen + 4 bytes valueLen + key + value
-
+	buf := make([]byte, PrefixSize+keyLen+valueLen)
 	buf[0] = byte(e.Type)
 	binary.BigEndian.PutUint32(buf[EntryTypeSize:EntryTypeSize+LengthSize], uint32(keyLen))
 	binary.BigEndian.PutUint32(buf[EntryTypeSize+LengthSize:EntryTypeSize+(LengthSize*2)], uint32(valueLen))
@@ -31,26 +32,22 @@ func WriteEntry(e Entry, file *os.File, offset int64) (int64, error) {
 	return offset + int64(n), nil
 }
 
-// ReadEntry reads a key-value entry from the file with a length-prefixed format.
+// ReadEntryAt reads an entry from a file at the given offset using a length-prefixed format.
 // Format: [1 byte EntryType][4 bytes KeyLen][4 bytes ValueLen][Key][Value]
-func ReadEntry(f *os.File, offset int64) (Entry, int64, error) {
-	// read the length of the EntryType key and value
+func ReadEntryAt(f *os.File, offset int64) (Entry, int64, error) {
 	lenBuf := make([]byte, PrefixSize)
 	_, err := f.ReadAt(lenBuf, offset)
 	if err != nil {
 		return Entry{}, 0, err
 	}
 
-	// Decode EntryType, key length and value length
 	entryType := EntryType(lenBuf[0])
 	keyLen := binary.BigEndian.Uint32(lenBuf[EntryTypeSize : EntryTypeSize+LengthSize])
 	valLen := binary.BigEndian.Uint32(lenBuf[EntryTypeSize+LengthSize : EntryTypeSize+(LengthSize*2)])
 
-	// Prepare buffers for key and value
 	key := make([]byte, keyLen)
 	value := make([]byte, valLen)
 
-	// Read key and value from file
 	_, err = f.ReadAt(key, offset+PrefixSize)
 	if err != nil {
 		return Entry{}, 0, err
@@ -61,7 +58,6 @@ func ReadEntry(f *os.File, offset int64) (Entry, int64, error) {
 		return Entry{}, 0, err
 	}
 
-	// New offset is the position after the current entry
 	newOffset := offset + PrefixSize + int64(keyLen) + int64(valLen)
 
 	return Entry{
@@ -71,22 +67,58 @@ func ReadEntry(f *os.File, offset int64) (Entry, int64, error) {
 	}, newOffset, nil
 }
 
-// CompareBytes compares (a, b) bytes lexicographically
-// Returns -1 if a < b, 1 if a > b, 0 if a == b
-func CompareBytes(a, b []byte) int {
-	minLen := min(len(b), len(a))
-	for i := range minLen {
-		if a[i] < b[i] {
-			return -1
-		} else if a[i] > b[i] {
-			return 1
-		}
+// ReadEntryFromReader reads a single entry from a buffered reader using a length-prefixed format.
+// Used for sequential read (e.g., during SSTable scan or WAL replay).
+func ReadEntryFromReader(r *bufio.Reader) (Entry, error) {
+	lenBuf := make([]byte, PrefixSize)
+	if _, err := io.ReadFull(r, lenBuf); err != nil {
+		return Entry{}, err
 	}
-	if len(a) < len(b) {
-		return -1
+
+	entryType := EntryType(lenBuf[0])
+	keyLen := binary.BigEndian.Uint32(lenBuf[EntryTypeSize : EntryTypeSize+LengthSize])
+	valLen := binary.BigEndian.Uint32(lenBuf[EntryTypeSize+LengthSize : EntryTypeSize+(LengthSize*2)])
+
+	key := make([]byte, keyLen)
+	if _, err := io.ReadFull(r, key); err != nil {
+		return Entry{}, err
 	}
-	if len(a) > len(b) {
-		return 1
+
+	value := make([]byte, valLen)
+	if _, err := io.ReadFull(r, value); err != nil {
+		return Entry{}, err
 	}
-	return 0
+
+	return Entry{
+		Type:  entryType,
+		Key:   key,
+		Value: value,
+	}, nil
+}
+
+// DecodeEntry parses an entry from a byte slice.
+// Returns the parsed entry and the number of bytes consumed.
+// Expects the same length-prefixed format used in file encoding.
+func DecodeEntry(buf []byte) (Entry, int, error) {
+	if len(buf) < PrefixSize {
+		return Entry{}, 0, io.ErrUnexpectedEOF
+	}
+
+	entryType := EntryType(buf[0])
+	keyLen := binary.BigEndian.Uint32(buf[EntryTypeSize : EntryTypeSize+LengthSize])
+	valLen := binary.BigEndian.Uint32(buf[EntryTypeSize+LengthSize : EntryTypeSize+(LengthSize*2)])
+	totalLen := PrefixSize + int(keyLen) + int(valLen)
+
+	if len(buf) < totalLen {
+		return Entry{}, 0, io.ErrUnexpectedEOF
+	}
+
+	key := buf[PrefixSize : PrefixSize+keyLen]
+	value := buf[PrefixSize+keyLen : totalLen]
+
+	return Entry{
+		Type:  entryType,
+		Key:   key,
+		Value: value,
+	}, totalLen, nil
 }

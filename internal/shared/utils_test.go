@@ -28,7 +28,7 @@ func TestWriteEntry(t *testing.T) {
 	}
 
 	// Write entry with prefix
-	newOffset, err := shared.WriteEntry(entry, f, offset)
+	newOffset, err := shared.WriteEntryAt(entry, f, offset)
 	require.NoError(t, err)
 
 	expectedLen := 1 + 4 + 4 + len(key) + len(value)
@@ -67,11 +67,11 @@ func TestReadEntry(t *testing.T) {
 		Value: value,
 	}
 	// Write entry with prefix
-	_, err = shared.WriteEntry(e, f, offset)
+	_, err = shared.WriteEntryAt(e, f, offset)
 	require.NoError(t, err)
 
 	// Read the entry back
-	entry, newOffset, err := shared.ReadEntry(f, offset)
+	entry, newOffset, err := shared.ReadEntryAt(f, offset)
 	require.NoError(t, err)
 
 	// Validate key and value

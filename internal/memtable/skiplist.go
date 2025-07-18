@@ -1,6 +1,7 @@
 package memtable
 
 import (
+	"bytes"
 	"math/rand"
 	"time"
 
@@ -83,14 +84,14 @@ func (sl *SkipList) Put(entry shared.Entry) {
 	current := sl.head
 
 	for i := sl.level - 1; i >= 0; i-- {
-		for current.next[i] != nil && shared.CompareBytes(current.next[i].key, key) < 0 {
+		for current.next[i] != nil && bytes.Compare(current.next[i].key, key) < 0 {
 			current = current.next[i]
 		}
 		update[i] = current
 	}
 
 	current = current.next[0]
-	if current != nil && shared.CompareBytes(current.key, key) == 0 {
+	if current != nil && bytes.Equal(current.key, key) {
 		current.entry = entry
 		return
 	}
@@ -123,14 +124,14 @@ func (sl *SkipList) Get(key []byte) (shared.Entry, bool) {
 
 	// Start from the highest level and work down
 	for i := sl.level - 1; i >= 0; i-- {
-		for current.next[i] != nil && shared.CompareBytes(current.next[i].key, key) < 0 {
+		for current.next[i] != nil && bytes.Compare(current.next[i].key, key) < 0 {
 			current = current.next[i]
 		}
 	}
 
 	// Check the node at level 0
 	current = current.next[0]
-	if current != nil && shared.CompareBytes(current.key, key) == 0 {
+	if current != nil && bytes.Equal(current.key, key) {
 		return current.entry, true
 	}
 	return shared.Entry{}, false
@@ -159,7 +160,7 @@ func (sl *SkipList) Range(start, end []byte) [][]byte {
 
 	// Find the first node >= start
 	for i := sl.level - 1; i >= 0; i-- {
-		for current.next[i] != nil && shared.CompareBytes(current.next[i].key, start) < 0 {
+		for current.next[i] != nil && bytes.Compare(current.next[i].key, start) < 0 {
 			current = current.next[i]
 		}
 	}
@@ -168,7 +169,7 @@ func (sl *SkipList) Range(start, end []byte) [][]byte {
 	current = current.next[0]
 
 	// Collect all nodes in range
-	for current != nil && shared.CompareBytes(current.key, end) <= 0 {
+	for current != nil && bytes.Compare(current.key, end) <= 0 {
 		result = append(result, current.key)
 		current = current.next[0]
 	}

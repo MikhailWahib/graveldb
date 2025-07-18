@@ -23,7 +23,7 @@ type Engine struct {
 	dataDir          string
 	memtable         memtable.Memtable
 	wal              *wal.WAL
-	tiers            [][]*sstable.SSTable
+	tiers            [][]*sstable.Reader
 	compactionMgr    *CompactionManager
 	wg               sync.WaitGroup // WaitGroup for background flush/compaction
 	sstCounter       *atomic.Uint64
@@ -35,7 +35,7 @@ type Engine struct {
 func NewEngine() *Engine {
 	return &Engine{
 		memtable:         memtable.NewMemtable(),
-		tiers:            make([][]*sstable.SSTable, 0),
+		tiers:            make([][]*sstable.Reader, 0),
 		sstCounter:       new(atomic.Uint64),
 		maxMemtableSize:  MaxMemtableSize,
 		maxTablesPerTier: MaxTablesPerTier,
@@ -127,8 +127,15 @@ func (e *Engine) parseTiers() error {
 				}
 			}
 
-			sst := sstable.NewSSTable(filepath.Join(sstDir, file.Name()))
-			e.tiers[tier] = append(e.tiers[tier], sst)
+			path := filepath.Join(sstDir, file.Name())
+			// Use the new Reader API
+			reader, err := sstable.NewReader(path)
+			if err != nil {
+				log.Printf("failed to open SSTable for read: %v", err)
+				continue
+			}
+
+			e.tiers[tier] = append(e.tiers[tier], reader)
 		}
 	}
 
@@ -137,7 +144,7 @@ func (e *Engine) parseTiers() error {
 }
 
 // Tiers returns the current SSTable tiers managed by the engine.
-func (e *Engine) Tiers() [][]*sstable.SSTable {
+func (e *Engine) Tiers() [][]*sstable.Reader {
 	e.mu.RLock()
 	defer e.mu.RUnlock()
 
@@ -191,20 +198,10 @@ func (e *Engine) Get(key []byte) ([]byte, bool) {
 	// Search all tiers, newest to oldest
 	for _, tier := range e.tiers {
 		for i := len(tier) - 1; i >= 0; i-- {
-			sst := tier[i]
+			reader := tier[i] // Changed from sst to reader
 
-			if err := sst.OpenForRead(); err != nil {
-				log.Printf("error opening sst: %s for read: %v", sst.GetPath(), err)
-				continue
-			}
-
-			entry, err := sst.Lookup(key)
-
-			// Close immediately after lookup
-			if closeErr := sst.Close(); closeErr != nil {
-				log.Printf("error closing sst: %s: %v", sst.GetPath(), closeErr)
-			}
-
+			// Use the new Get method instead of Lookup
+			entry, err := reader.Get(key)
 			if err == nil {
 				if entry.Type == shared.DeleteEntry {
 					return nil, false
@@ -235,34 +232,38 @@ func (e *Engine) flushMemtable(mt memtable.Memtable) error {
 	}
 
 	filename := fmt.Sprintf("%s/%06d.sst", l0Dir, e.sstCounter.Add(1))
-	sst := sstable.NewSSTable(filename)
 
-	if err := sst.OpenForWrite(); err != nil {
-		return fmt.Errorf("failed to open SSTable for writing: %w", err)
+	writer, err := sstable.NewWriter(filename)
+	if err != nil {
+		return err
 	}
+	defer writer.Close()
 
 	for _, entry := range entries {
-		if err := sst.AppendPut(entry.Key, entry.Value); err != nil {
-			return fmt.Errorf("failed to append entry to SSTable: %w", err)
+		// Use Put instead of AppendPut
+		if err := writer.PutEntry(entry.Key, entry.Value); err != nil {
+			return fmt.Errorf("failed to put entry to SSTable: %w", err)
 		}
 	}
 
-	if err := sst.Finish(); err != nil {
+	// Close will automatically call Finish()
+	if err := writer.Close(); err != nil {
 		return fmt.Errorf("failed to finish SSTable: %w", err)
 	}
 
-	if err := sst.Close(); err != nil {
-		return fmt.Errorf("failed to close SSTable: %w", err)
+	reader, err := sstable.NewReader(filename)
+	if err != nil {
+		return fmt.Errorf("failed to open SSTable for reading: %w", err)
 	}
 
 	e.mu.Lock()
 	// Ensure tier 0 exists
 	if len(e.tiers) == 0 {
-		e.tiers = append(e.tiers, []*sstable.SSTable{})
+		e.tiers = append(e.tiers, []*sstable.Reader{})
 	}
 
-	// Append SST to T0
-	e.tiers[0] = append(e.tiers[0], sst)
+	// Append reader to T0
+	e.tiers[0] = append(e.tiers[0], reader)
 
 	shouldCompact := e.compactionMgr.shouldCompactTier(0)
 	e.mu.Unlock()
@@ -313,6 +314,15 @@ func (e *Engine) Close() error {
 			return fmt.Errorf("failed to flush final memtable: %w", err)
 		}
 	}
+
+	e.mu.Lock()
+	// Close opened SST readers
+	for _, tier := range e.tiers {
+		for _, reader := range tier {
+			_ = reader.Close()
+		}
+	}
+	e.mu.Unlock()
 
 	// Close the WAL
 	if e.wal != nil {

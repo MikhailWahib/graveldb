@@ -1,3 +1,5 @@
+// Package sstable implements sorted string tables for persistent storage
+// of key-value pairs on disk in a format optimized for reads.
 package sstable
 
 import (
@@ -13,36 +15,36 @@ const (
 	indexInterval = 16
 )
 
-// sstWriter provides functionality to write to an SSTable
-type sstWriter struct {
+// Writer provides functionality to write to an SSTable
+type Writer struct {
 	file      *os.File
+	path      string
 	index     []IndexEntry
 	offset    int64
 	indexSize int64
 	count     int // tracks number of entries for sparse indexing
+	finished  bool
 }
 
-// newSSTWriter creates a new SSTable writer
-func newSSTWriter() *sstWriter {
-	return &sstWriter{
-		index:  make([]IndexEntry, 0),
-		offset: 0,
-	}
-}
-
-// Open prepares the writer for a new SSTable file
-func (w *sstWriter) Open(path string) error {
-	file, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE, 0644)
+// NewWriter creates a new SSTable writer
+func NewWriter(path string) (*Writer, error) {
+	file, err := os.OpenFile(path, os.O_CREATE|os.O_RDWR|os.O_TRUNC, 0644)
 	if err != nil {
-		return err
+		return nil, fmt.Errorf("failed to create SSTable: %w", err)
 	}
 
-	w.file = file
-	return nil
+	return &Writer{
+		file:  file,
+		path:  path,
+		index: make([]IndexEntry, 0),
+	}, nil
 }
 
-// AppendPut writes a key-value pair to the SSTable
-func (w *sstWriter) AppendPut(key, value []byte) error {
+// PutEntry writes a key-value pair to the SSTable
+func (w *Writer) PutEntry(key, value []byte) error {
+	if w.finished {
+		return fmt.Errorf("cannot write to finished SSTable")
+	}
 	return w.writeEntry(shared.Entry{
 		Type:  shared.PutEntry,
 		Key:   key,
@@ -50,8 +52,11 @@ func (w *sstWriter) AppendPut(key, value []byte) error {
 	})
 }
 
-// AppendDelete writes a deletion marker for a key to the SSTable
-func (w *sstWriter) AppendDelete(key []byte) error {
+// DeleteEntry writes a deletion marker for a key to the SSTable
+func (w *Writer) DeleteEntry(key []byte) error {
+	if w.finished {
+		return fmt.Errorf("cannot write to finished SSTable")
+	}
 	return w.writeEntry(shared.Entry{
 		Type:  shared.DeleteEntry,
 		Key:   key,
@@ -60,27 +65,25 @@ func (w *sstWriter) AppendDelete(key []byte) error {
 }
 
 // writeEntry writes a key-value pair to the data section
-func (w *sstWriter) writeEntry(entry shared.Entry) error {
+func (w *Writer) writeEntry(entry shared.Entry) error {
 	entryOffset := w.offset
 
 	// Write the entry prefixed with type byte and k,v
-	n, err := shared.WriteEntry(entry, w.file, w.offset)
+	n, err := shared.WriteEntryAt(entry, w.file, w.offset)
 	if err != nil {
 		return err
 	}
-
 	w.offset = n
 
 	if w.count%indexInterval == 0 {
 		w.index = append(w.index, IndexEntry{Key: entry.Key, Offset: entryOffset})
 	}
-
 	w.count++
 	return nil
 }
 
 // writeIndex writes the sparse index for faster lookups
-func (w *sstWriter) writeIndex() error {
+func (w *Writer) writeIndex() error {
 	indexStartOffset := w.offset
 
 	for _, entry := range w.index {
@@ -90,11 +93,10 @@ func (w *sstWriter) writeIndex() error {
 			Key:   entry.Key,
 			Value: nil,
 		}
-		newOffset, err := shared.WriteEntry(e, w.file, w.offset)
+		newOffset, err := shared.WriteEntryAt(e, w.file, w.offset)
 		if err != nil {
 			return err
 		}
-
 		w.offset = newOffset
 
 		// Write offset
@@ -104,7 +106,6 @@ func (w *sstWriter) writeIndex() error {
 		if err != nil {
 			return err
 		}
-
 		w.offset += 8
 	}
 
@@ -114,7 +115,11 @@ func (w *sstWriter) writeIndex() error {
 }
 
 // Finish finalizes the SSTable and closes the file
-func (w *sstWriter) Finish() error {
+func (w *Writer) Finish() error {
+	if w.finished {
+		return nil // already finished
+	}
+
 	// Write the index section to the file
 	indexOffset := w.offset // The current offset will be the start of the index section
 	if err := w.writeIndex(); err != nil {
@@ -143,10 +148,28 @@ func (w *sstWriter) Finish() error {
 		return fmt.Errorf("failed to sync file: %w", err)
 	}
 
-	// Close the file
-	if err := w.file.Close(); err != nil {
-		return fmt.Errorf("failed to close file: %w", err)
-	}
-
+	w.finished = true
 	return nil
+}
+
+// Close closes the underlying file
+func (w *Writer) Close() error {
+	if !w.finished {
+		if err := w.Finish(); err != nil {
+			w.file.Close()
+			return err
+		}
+	}
+	return w.file.Close()
+}
+
+// Delete removes the SSTable file from disk
+func (w *Writer) Delete() error {
+	w.Close()
+	return os.Remove(w.path)
+}
+
+// Path returns the SSTable file path
+func (w *Writer) Path() string {
+	return w.path
 }

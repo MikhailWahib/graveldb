@@ -11,14 +11,12 @@ import (
 // CompactionManager manages the compaction process for SSTable tiers.
 type CompactionManager struct {
 	engine *Engine
-	merger *sstable.Merger
 }
 
 // NewCompactionManager creates a new CompactionManager for the given data directory and tiers.
 func NewCompactionManager(e *Engine) *CompactionManager {
 	return &CompactionManager{
 		engine: e,
-		merger: sstable.NewMerger(),
 	}
 }
 
@@ -67,6 +65,8 @@ func (cm *CompactionManager) compact(tier int) error {
 	cm.engine.mu.Lock()
 	defer cm.engine.mu.Unlock()
 
+	merger := sstable.NewMerger()
+
 	// Double-check if compaction is still needed
 	if !cm.shouldCompactTier(tier) {
 		return nil
@@ -83,8 +83,6 @@ func (cm *CompactionManager) compact(tier int) error {
 		return fmt.Errorf("failed to generate output path for tier %d", tier+1)
 	}
 
-	output := sstable.NewSSTable(outputFile)
-
 	// Ensure tiers slice is long enough
 	for len(cm.engine.tiers) <= tier+1 {
 		cm.engine.tiers = append(cm.engine.tiers, nil)
@@ -92,17 +90,13 @@ func (cm *CompactionManager) compact(tier int) error {
 
 	// Add sources to merger and open them for reading
 	for _, sst := range inputs {
-		if err := cm.merger.AddSource(sst); err != nil {
+		if err := merger.AddSource(sst); err != nil {
 			return fmt.Errorf("failed to add source to merger: %w", err)
-		}
-		if err := sst.OpenForRead(); err != nil {
-			return fmt.Errorf("failed to open SST for reading: %w", err)
 		}
 	}
 
-	// Set output and open for writing
-	cm.merger.SetOutput(output)
-	if err := output.OpenForWrite(); err != nil {
+	output, err := sstable.NewWriter(outputFile)
+	if err != nil {
 		// Clean up opened input SSTables
 		for _, sst := range inputs {
 			_ = sst.Close()
@@ -110,8 +104,9 @@ func (cm *CompactionManager) compact(tier int) error {
 		return fmt.Errorf("failed to open output SST for writing: %w", err)
 	}
 
+	merger.SetOutput(output)
 	// Perform the merge
-	if err := cm.merger.Merge(); err != nil {
+	if err := merger.Merge(); err != nil {
 		// Clean up on error
 		_ = output.Close()
 		for _, sst := range inputs {
@@ -125,16 +120,19 @@ func (cm *CompactionManager) compact(tier int) error {
 	}
 
 	// Update tiers structure
-	cm.engine.tiers[tier] = []*sstable.SSTable{}
-	cm.engine.tiers[tier+1] = append(cm.engine.tiers[tier+1], output)
+	cm.engine.tiers[tier] = []*sstable.Reader{}
 
-	// Reset merger for next use
-	cm.merger.Reset()
+	// Open the output file as a reader for the next tier
+	outputReader, err := sstable.NewReader(outputFile)
+	if err != nil {
+		return fmt.Errorf("failed to open compacted SST for reading: %w", err)
+	}
+	cm.engine.tiers[tier+1] = append(cm.engine.tiers[tier+1], outputReader)
 
 	return nil
 }
 
-func (cm *CompactionManager) finalizeAndCleanup(output *sstable.SSTable, inputs []*sstable.SSTable) error {
+func (cm *CompactionManager) finalizeAndCleanup(output *sstable.Writer, inputs []*sstable.Reader) error {
 	if err := output.Close(); err != nil {
 		for _, sst := range inputs {
 			_ = sst.Close()
@@ -143,8 +141,9 @@ func (cm *CompactionManager) finalizeAndCleanup(output *sstable.SSTable, inputs 
 	}
 
 	for _, sst := range inputs {
+		path := sst.Path()
 		_ = sst.Close()
-		_ = sst.Delete()
+		_ = os.Remove(path)
 	}
 	return nil
 }

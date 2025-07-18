@@ -3,6 +3,7 @@
 package sstable
 
 import (
+	"bytes"
 	"encoding/binary"
 	"fmt"
 	"io"
@@ -12,83 +13,91 @@ import (
 	"github.com/MikhailWahib/graveldb/internal/shared"
 )
 
-type sstReader struct {
+// Reader provides functionality to read from an SSTable
+type Reader struct {
 	file      *os.File
+	path      string
 	index     []IndexEntry
 	indexBase int64
 }
 
-func newSSTReader() *sstReader {
-	return &sstReader{}
-}
-
-// Open opens an existing SSTable file for reading
-func (r *sstReader) Open(filename string) error {
-	file, err := os.OpenFile(filename, os.O_RDONLY, 0)
+// NewReader creates a new SSTable reader
+func NewReader(path string) (*Reader, error) {
+	file, err := os.Open(path)
 	if err != nil {
-		return fmt.Errorf("failed to open SST file: %w", err)
+		return nil, fmt.Errorf("failed to open SSTable: %w", err)
 	}
 
-	r.file = file
+	reader := &Reader{
+		file: file,
+		path: path,
+	}
 
-	// Load footer
+	if err := reader.loadIndex(); err != nil {
+		file.Close()
+		return nil, fmt.Errorf("failed to load index: %w", err)
+	}
+
+	return reader, nil
+}
+
+// loadIndex reads the footer and load the index to memory
+func (r *Reader) loadIndex() error {
 	stat, err := r.file.Stat()
 	if err != nil {
 		return fmt.Errorf("failed to stat SST file: %w", err)
 	}
-
 	if stat.Size() < FooterSize {
-		return fmt.Errorf("file too small to be valid SSTable")
+		return nil
 	}
 
+	// Read footer
 	footerOffset := stat.Size() - FooterSize
-	buf := make([]byte, FooterSize)
-	_, err = r.file.ReadAt(buf, footerOffset)
-	if err != nil {
+	footer := make([]byte, FooterSize)
+	if _, err := io.ReadFull(io.NewSectionReader(r.file, footerOffset, FooterSize), footer); err != nil {
 		return fmt.Errorf("failed to read footer: %w", err)
 	}
 
-	indexOffset := int64(binary.BigEndian.Uint64(buf[:IndexOffsetSize]))
-	indexSize := int64(binary.BigEndian.Uint64(buf[IndexOffsetSize:FooterSize]))
+	indexOffset := int64(binary.BigEndian.Uint64(footer[:IndexOffsetSize]))
+	indexSize := int64(binary.BigEndian.Uint64(footer[IndexOffsetSize:]))
 	r.indexBase = indexOffset
 
-	// Parse sparse index
-	index := []IndexEntry{}
-	offset := indexOffset
-	end := indexOffset + indexSize
-
-	for offset < end {
-		entry, newOffset, err := shared.ReadEntry(r.file, offset)
-		if err != nil {
-			return fmt.Errorf("failed to read index entry: %w", err)
-		}
-
-		// Read offset immediately after key
-		offsetBuf := make([]byte, 8)
-		_, err = r.file.ReadAt(offsetBuf, newOffset)
-		if err != nil {
-			return fmt.Errorf("failed to read index offset: %w", err)
-		}
-
-		dataOffset := int64(binary.BigEndian.Uint64(offsetBuf))
-		index = append(r.index, IndexEntry{Key: entry.Key, Offset: dataOffset})
-		offset = newOffset + 8
+	// Read index section into memory buffer (single read)
+	indexBuf := make([]byte, indexSize)
+	if _, err := io.ReadFull(io.NewSectionReader(r.file, indexOffset, indexSize), indexBuf); err != nil {
+		return fmt.Errorf("failed to read index section: %w", err)
 	}
 
-	r.index = index
+	// Parse index from buffer
+	r.index = make([]IndexEntry, 0, indexSize/40) // rough guess; 40 bytes per entry
+	var offset int64
+	for offset < indexSize {
+		entry, bytesRead, err := shared.DecodeEntry(indexBuf[offset:])
+		if err != nil {
+			return fmt.Errorf("failed to decode index entry: %w", err)
+		}
+
+		if offset+int64(bytesRead)+8 > indexSize {
+			return fmt.Errorf("corrupt index: missing data offset")
+		}
+
+		// Decode data offset
+		dataOffset := int64(binary.BigEndian.Uint64(indexBuf[offset+int64(bytesRead) : offset+int64(bytesRead)+8]))
+		r.index = append(r.index, IndexEntry{
+			Key:    entry.Key,
+			Offset: dataOffset,
+		})
+		offset += int64(bytesRead) + 8
+	}
+
 	return nil
 }
 
-// Close closes the SSTable file
-func (r *sstReader) Close() error {
-	return r.file.Close()
-}
-
-// Lookup performs a binary search over the sparse index and returns the entry if found
-func (r *sstReader) Lookup(key []byte) (shared.Entry, error) {
+// Get performs a lookup and returns the entry if found
+func (r *Reader) Get(key []byte) (shared.Entry, error) {
 	// Find index entry with key <= target
 	pos := sort.Search(len(r.index), func(i int) bool {
-		return shared.CompareBytes(r.index[i].Key, key) > 0
+		return bytes.Compare(r.index[i].Key, key) > 0
 	}) - 1
 
 	if pos < 0 {
@@ -107,7 +116,7 @@ func (r *sstReader) Lookup(key []byte) (shared.Entry, error) {
 	var foundDeleted bool
 
 	for offset < blockEnd {
-		entry, newOffset, err := shared.ReadEntry(r.file, offset)
+		entry, newOffset, err := shared.ReadEntryAt(r.file, offset)
 		if err != nil {
 			if err == io.EOF {
 				break
@@ -115,7 +124,7 @@ func (r *sstReader) Lookup(key []byte) (shared.Entry, error) {
 			return shared.Entry{}, fmt.Errorf("failed to read entry: %w", err)
 		}
 
-		cmp := shared.CompareBytes(entry.Key, key)
+		cmp := bytes.Compare(entry.Key, key)
 		if cmp == 0 {
 			if shared.EntryType(entry.Type) == shared.DeleteEntry {
 				foundDeleted = true
@@ -139,17 +148,8 @@ func (r *sstReader) Lookup(key []byte) (shared.Entry, error) {
 	return lastValue, nil
 }
 
-// Iterator provides sequential access to entries in an SSTable
-type Iterator struct {
-	reader  *sstReader
-	offset  int64
-	entry   *shared.Entry
-	dataEnd int64
-	err     error
-}
-
-// newIterator creates a new iterator that uses the index to iterate over data entries
-func (r *sstReader) newIterator() *Iterator {
+// NewIterator creates a new iterator
+func (r *Reader) NewIterator() *Iterator {
 	return &Iterator{
 		reader:  r,
 		offset:  0,
@@ -157,13 +157,32 @@ func (r *sstReader) newIterator() *Iterator {
 	}
 }
 
-// Next advances the iterator to the next entry using the index
+// Close closes the underlying file
+func (r *Reader) Close() error {
+	return r.file.Close()
+}
+
+// Path returns the SSTable file path
+func (r *Reader) Path() string {
+	return r.path
+}
+
+// Iterator provides sequential access to entries in an SSTable
+type Iterator struct {
+	reader  *Reader
+	offset  int64
+	entry   *shared.Entry
+	dataEnd int64
+	err     error
+}
+
+// Next advances the iterator to the next entry
 func (it *Iterator) Next() bool {
 	if it.err != nil || it.offset >= it.dataEnd {
 		return false
 	}
 
-	entry, newOffset, err := shared.ReadEntry(it.reader.file, it.offset)
+	entry, newOffset, err := shared.ReadEntryAt(it.reader.file, it.offset)
 	if err != nil {
 		if err == io.EOF {
 			it.entry = nil
@@ -206,16 +225,16 @@ func (it *Iterator) Type() shared.EntryType {
 	return it.entry.Type
 }
 
+// IsDeleted return true if the current value is deleted
+func (it *Iterator) IsDeleted() bool {
+	return it.entry != nil && it.entry.Type == shared.DeleteEntry
+}
+
 // Reset resets the iterator
 func (it *Iterator) Reset() {
 	it.offset = 0
 	it.entry = nil
 	it.err = nil
-}
-
-// IsDeleted return true if the current value is deleted
-func (it *Iterator) IsDeleted() bool {
-	return it.entry.Type == shared.DeleteEntry
 }
 
 // Error returns any error encountered during iteration
