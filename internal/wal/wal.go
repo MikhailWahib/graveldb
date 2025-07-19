@@ -9,7 +9,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/MikhailWahib/graveldb/internal/shared"
+	"github.com/MikhailWahib/graveldb/internal/record"
 )
 
 const (
@@ -52,7 +52,7 @@ func NewWAL(path string) (*WAL, error) {
 }
 
 // writeEntry serializes and writes an entry to the buffer
-func (w *WAL) writeEntry(e shared.Entry) error {
+func (w *WAL) writeEntry(e record.Entry) error {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 
@@ -60,7 +60,7 @@ func (w *WAL) writeEntry(e shared.Entry) error {
 		return errors.New("WAL is closed")
 	}
 
-	data := shared.SerializeEntry(e)
+	data := record.SerializeEntry(e)
 	if _, err := w.writer.Write(data); err != nil {
 		return err
 	}
@@ -73,8 +73,8 @@ func (w *WAL) writeEntry(e shared.Entry) error {
 
 // AppendPut appends a put operation to the WAL
 func (w *WAL) AppendPut(key, value []byte) error {
-	return w.writeEntry(shared.Entry{
-		Type:  shared.PutEntry,
+	return w.writeEntry(record.Entry{
+		Type:  record.PutEntry,
 		Key:   key,
 		Value: value,
 	})
@@ -82,8 +82,8 @@ func (w *WAL) AppendPut(key, value []byte) error {
 
 // AppendDelete appends a delete operation to the WAL
 func (w *WAL) AppendDelete(key []byte) error {
-	return w.writeEntry(shared.Entry{
-		Type:  shared.DeleteEntry,
+	return w.writeEntry(record.Entry{
+		Type:  record.DeleteEntry,
 		Key:   key,
 		Value: []byte{},
 	})
@@ -154,7 +154,7 @@ func (w *WAL) flushBuffer() {
 }
 
 // Replay reads entries from the beginning of the WAL file
-func (w *WAL) Replay() ([]shared.Entry, error) {
+func (w *WAL) Replay() ([]record.Entry, error) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 
@@ -167,9 +167,9 @@ func (w *WAL) Replay() ([]shared.Entry, error) {
 	}()
 
 	reader := bufio.NewReader(readFile)
-	var entries []shared.Entry
+	var entries []record.Entry
 	for {
-		entry, err := shared.ReadEntryFromReader(reader)
+		entry, err := record.ReadEntryFromReader(reader)
 		if err != nil {
 			if errors.Is(err, io.EOF) {
 				break

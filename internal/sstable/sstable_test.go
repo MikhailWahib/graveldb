@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/MikhailWahib/graveldb/internal/shared"
+	"github.com/MikhailWahib/graveldb/internal/record"
 	"github.com/MikhailWahib/graveldb/internal/sstable"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -303,18 +303,18 @@ func TestSSTableIterator(t *testing.T) {
 	testCases := []struct {
 		key   []byte
 		value []byte
-		typ   shared.EntryType
+		typ   record.EntryType
 	}{
-		{[]byte("a"), []byte("apple"), shared.PutEntry},
-		{[]byte("b"), nil, shared.DeleteEntry},
-		{[]byte("c"), []byte("cherry"), shared.PutEntry},
-		{[]byte("d"), []byte("date"), shared.PutEntry},
-		{[]byte("e"), nil, shared.DeleteEntry},
+		{[]byte("a"), []byte("apple"), record.PutEntry},
+		{[]byte("b"), nil, record.DeleteEntry},
+		{[]byte("c"), []byte("cherry"), record.PutEntry},
+		{[]byte("d"), []byte("date"), record.PutEntry},
+		{[]byte("e"), nil, record.DeleteEntry},
 	}
 
 	// Write entries
 	for _, tc := range testCases {
-		if tc.typ == shared.PutEntry {
+		if tc.typ == record.PutEntry {
 			err = sst.PutEntry(tc.key, tc.value)
 			require.NoError(t, err)
 		} else {
@@ -384,7 +384,7 @@ func createSST(t *testing.T, path string, entries []entry) *sstable.Reader {
 	require.NoError(t, err)
 
 	for _, e := range entries {
-		if e.typ == shared.PutEntry {
+		if e.typ == record.PutEntry {
 			require.NoError(t, sst.PutEntry([]byte(e.key), []byte(e.value)))
 		} else {
 			require.NoError(t, sst.DeleteEntry([]byte(e.key)))
@@ -402,7 +402,7 @@ func createSST(t *testing.T, path string, entries []entry) *sstable.Reader {
 type entry struct {
 	key   string
 	value string
-	typ   shared.EntryType
+	typ   record.EntryType
 }
 
 func TestMerger_MergesCorrectly(t *testing.T) {
@@ -411,18 +411,18 @@ func TestMerger_MergesCorrectly(t *testing.T) {
 	// Old SSTable: a=1, b=2, c=3
 	oldSSTPath := filepath.Join(tempDir, "old.sst")
 	oldEntries := []entry{
-		{"a", "1", shared.PutEntry},
-		{"b", "2", shared.PutEntry},
-		{"c", "3", shared.PutEntry},
+		{"a", "1", record.PutEntry},
+		{"b", "2", record.PutEntry},
+		{"c", "3", record.PutEntry},
 	}
 	oldSST := createSST(t, oldSSTPath, oldEntries)
 
 	// New SSTable: b=22 (overwrite), c=delete, d=4
 	newSSTPath := filepath.Join(tempDir, "new.sst")
 	newEntries := []entry{
-		{"b", "22", shared.PutEntry},
-		{"c", "", shared.DeleteEntry},
-		{"d", "4", shared.PutEntry},
+		{"b", "22", record.PutEntry},
+		{"c", "", record.DeleteEntry},
+		{"d", "4", record.PutEntry},
 	}
 	newSST := createSST(t, newSSTPath, newEntries)
 
@@ -447,10 +447,10 @@ func TestMerger_MergesCorrectly(t *testing.T) {
 	iter := outputSSTReader.NewIterator()
 
 	expected := []entry{
-		{"a", "1", shared.PutEntry},
-		{"b", "22", shared.PutEntry},  // newer value
-		{"c", "", shared.DeleteEntry}, // deleted
-		{"d", "4", shared.PutEntry},
+		{"a", "1", record.PutEntry},
+		{"b", "22", record.PutEntry},  // newer value
+		{"c", "", record.DeleteEntry}, // deleted
+		{"d", "4", record.PutEntry},
 	}
 
 	i := 0
@@ -460,7 +460,7 @@ func TestMerger_MergesCorrectly(t *testing.T) {
 		assert.Equal(t, exp.key, string(iter.Key()), "key mismatch at index %d", i)
 		assert.Equal(t, exp.typ, iter.Type(), "entry type mismatch")
 
-		if exp.typ == shared.PutEntry {
+		if exp.typ == record.PutEntry {
 			assert.Equal(t, exp.value, string(iter.Value()), "value mismatch")
 		} else {
 			assert.True(t, iter.IsDeleted(), "should be deleted")
@@ -480,29 +480,29 @@ func TestMerger_MultipleSSTablesMerge(t *testing.T) {
 	// SST1: a=1, b=2, c=3
 	sst1Path := filepath.Join(tempDir, "sst1.sst")
 	sst1 := createSST(t, sst1Path, []entry{
-		{"a", "1", shared.PutEntry},
-		{"b", "2", shared.PutEntry},
-		{"c", "3", shared.PutEntry},
+		{"a", "1", record.PutEntry},
+		{"b", "2", record.PutEntry},
+		{"c", "3", record.PutEntry},
 	})
 
 	// SST2: b=22, d=4
 	sst2Path := filepath.Join(tempDir, "sst2.sst")
 	sst2 := createSST(t, sst2Path, []entry{
-		{"b", "22", shared.PutEntry}, // overwrites b from sst1
-		{"d", "4", shared.PutEntry},
+		{"b", "22", record.PutEntry}, // overwrites b from sst1
+		{"d", "4", record.PutEntry},
 	})
 
 	// SST3: c=delete, e=5
 	sst3Path := filepath.Join(tempDir, "sst3.sst")
 	sst3 := createSST(t, sst3Path, []entry{
-		{"c", "", shared.DeleteEntry}, // deletes c from sst1
-		{"e", "5", shared.PutEntry},
+		{"c", "", record.DeleteEntry}, // deletes c from sst1
+		{"e", "5", record.PutEntry},
 	})
 
 	sst4Path := filepath.Join(tempDir, "sst4.sst")
 	sst4 := createSST(t, sst4Path, []entry{
-		{"f", "fifi", shared.PutEntry},
-		{"g", "gigi", shared.PutEntry},
+		{"f", "fifi", record.PutEntry},
+		{"g", "gigi", record.PutEntry},
 	})
 
 	// Output SSTable
@@ -528,13 +528,13 @@ func TestMerger_MultipleSSTablesMerge(t *testing.T) {
 
 	// Expected after merge
 	expected := []entry{
-		{"a", "1", shared.PutEntry},
-		{"b", "22", shared.PutEntry},  // from sst2
-		{"c", "", shared.DeleteEntry}, // deleted in sst3
-		{"d", "4", shared.PutEntry},   // from sst2
-		{"e", "5", shared.PutEntry},   // from sst3
-		{"f", "fifi", shared.PutEntry},
-		{"g", "gigi", shared.PutEntry},
+		{"a", "1", record.PutEntry},
+		{"b", "22", record.PutEntry},  // from sst2
+		{"c", "", record.DeleteEntry}, // deleted in sst3
+		{"d", "4", record.PutEntry},   // from sst2
+		{"e", "5", record.PutEntry},   // from sst3
+		{"f", "fifi", record.PutEntry},
+		{"g", "gigi", record.PutEntry},
 	}
 
 	i := 0
@@ -543,7 +543,7 @@ func TestMerger_MultipleSSTablesMerge(t *testing.T) {
 		exp := expected[i]
 		assert.Equal(t, exp.key, string(iter.Key()), "Key mismatch at index %d", i)
 		assert.Equal(t, exp.typ, iter.Type(), "Type mismatch at index %d", i)
-		if exp.typ == shared.PutEntry {
+		if exp.typ == record.PutEntry {
 			assert.Equal(t, exp.value, string(iter.Value()), "Value mismatch")
 		} else {
 			assert.True(t, iter.IsDeleted())

@@ -1,4 +1,4 @@
-package shared
+package record
 
 // EntryType represents the type of entry stored in the database
 type EntryType byte

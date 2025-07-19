@@ -5,15 +5,15 @@ package memtable
 import (
 	"sync"
 
-	"github.com/MikhailWahib/graveldb/internal/shared"
+	"github.com/MikhailWahib/graveldb/internal/record"
 )
 
 // Memtable defines the interface for an in-memory table that supports basic operations
 type Memtable interface {
 	// Entries return all entries in the skiplist
-	Entries() []shared.Entry
+	Entries() []record.Entry
 	Put(key, value []byte) error
-	Get(key []byte) (shared.Entry, bool)
+	Get(key []byte) (record.Entry, bool)
 	// Delete marks the given key as deleted
 	// Returns an error if the operation fails.
 	Delete(key []byte) error
@@ -39,7 +39,7 @@ func NewMemtable() Memtable {
 }
 
 // Entries returns all entries in the skiplist memtable.
-func (m *SkiplistMemtable) Entries() []shared.Entry {
+func (m *SkiplistMemtable) Entries() []record.Entry {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 
@@ -51,12 +51,12 @@ func (m *SkiplistMemtable) Put(key, value []byte) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	m.sl.Put(shared.Entry{Type: shared.PutEntry, Key: key, Value: value})
+	m.sl.Put(record.Entry{Type: record.PutEntry, Key: key, Value: value})
 	return nil
 }
 
 // Get retrieves an entry from the memtable by key
-func (m *SkiplistMemtable) Get(key []byte) (shared.Entry, bool) {
+func (m *SkiplistMemtable) Get(key []byte) (record.Entry, bool) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 

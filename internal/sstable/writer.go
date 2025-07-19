@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/MikhailWahib/graveldb/internal/shared"
+	"github.com/MikhailWahib/graveldb/internal/record"
 )
 
 const (
@@ -45,8 +45,8 @@ func (w *Writer) PutEntry(key, value []byte) error {
 	if w.finished {
 		return fmt.Errorf("cannot write to finished SSTable")
 	}
-	return w.writeEntry(shared.Entry{
-		Type:  shared.PutEntry,
+	return w.writeEntry(record.Entry{
+		Type:  record.PutEntry,
 		Key:   key,
 		Value: value,
 	})
@@ -57,19 +57,19 @@ func (w *Writer) DeleteEntry(key []byte) error {
 	if w.finished {
 		return fmt.Errorf("cannot write to finished SSTable")
 	}
-	return w.writeEntry(shared.Entry{
-		Type:  shared.DeleteEntry,
+	return w.writeEntry(record.Entry{
+		Type:  record.DeleteEntry,
 		Key:   key,
 		Value: nil,
 	})
 }
 
 // writeEntry writes a key-value pair to the data section
-func (w *Writer) writeEntry(entry shared.Entry) error {
+func (w *Writer) writeEntry(entry record.Entry) error {
 	entryOffset := w.offset
 
 	// Write the entry prefixed with type byte and k,v
-	n, err := shared.WriteEntryAt(entry, w.file, w.offset)
+	n, err := record.WriteEntryAt(entry, w.file, w.offset)
 	if err != nil {
 		return err
 	}
@@ -88,12 +88,12 @@ func (w *Writer) writeIndex() error {
 
 	for _, entry := range w.index {
 		// Write key with prefix using IndexEntry type
-		e := shared.Entry{
-			Type:  shared.IndexEntry,
+		e := record.Entry{
+			Type:  record.IndexEntry,
 			Key:   entry.Key,
 			Value: nil,
 		}
-		newOffset, err := shared.WriteEntryAt(e, w.file, w.offset)
+		newOffset, err := record.WriteEntryAt(e, w.file, w.offset)
 		if err != nil {
 			return err
 		}

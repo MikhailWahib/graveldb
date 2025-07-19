@@ -1,4 +1,4 @@
-package shared_test
+package record_test
 
 import (
 	"encoding/binary"
@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/MikhailWahib/graveldb/internal/shared"
+	"github.com/MikhailWahib/graveldb/internal/record"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -21,14 +21,14 @@ func TestWriteEntry(t *testing.T) {
 	key := []byte("mykey")
 	value := []byte("myvalue")
 	offset := int64(0)
-	entry := shared.Entry{
-		Type:  shared.PutEntry,
+	entry := record.Entry{
+		Type:  record.PutEntry,
 		Key:   key,
 		Value: value,
 	}
 
 	// Write entry with prefix
-	newOffset, err := shared.WriteEntryAt(entry, f, offset)
+	newOffset, err := record.WriteEntryAt(entry, f, offset)
 	require.NoError(t, err)
 
 	expectedLen := 1 + 4 + 4 + len(key) + len(value)
@@ -46,7 +46,7 @@ func TestWriteEntry(t *testing.T) {
 	readValue := buf[9+keyLen:]
 
 	// Validate entryType, key and value
-	assert.Equal(t, shared.PutEntry, shared.EntryType(entryType), "entry type mismatch")
+	assert.Equal(t, record.PutEntry, record.EntryType(entryType), "entry type mismatch")
 	assert.Equal(t, key, readKey, "key mismatch")
 	assert.Equal(t, value, readValue, "value mismatch")
 }
@@ -61,17 +61,17 @@ func TestReadEntry(t *testing.T) {
 	key := []byte("mykey")
 	value := []byte("myvalue")
 	offset := int64(0)
-	e := shared.Entry{
-		Type:  shared.DeleteEntry,
+	e := record.Entry{
+		Type:  record.DeleteEntry,
 		Key:   key,
 		Value: value,
 	}
 	// Write entry with prefix
-	_, err = shared.WriteEntryAt(e, f, offset)
+	_, err = record.WriteEntryAt(e, f, offset)
 	require.NoError(t, err)
 
 	// Read the entry back
-	entry, newOffset, err := shared.ReadEntryAt(f, offset)
+	entry, newOffset, err := record.ReadEntryAt(f, offset)
 	require.NoError(t, err)
 
 	// Validate key and value
@@ -81,5 +81,5 @@ func TestReadEntry(t *testing.T) {
 	expectedLen := 1 + 4 + 4 + len(key) + len(value)
 	expectedOffset := offset + int64(expectedLen)
 	assert.Equal(t, expectedOffset, newOffset, "unexpected new offset")
-	assert.Equal(t, shared.DeleteEntry, shared.EntryType(entry.Type), "entry type mismatch")
+	assert.Equal(t, record.DeleteEntry, record.EntryType(entry.Type), "entry type mismatch")
 }

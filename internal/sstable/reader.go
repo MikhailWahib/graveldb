@@ -10,7 +10,7 @@ import (
 	"os"
 	"sort"
 
-	"github.com/MikhailWahib/graveldb/internal/shared"
+	"github.com/MikhailWahib/graveldb/internal/record"
 )
 
 // Reader provides functionality to read from an SSTable
@@ -72,7 +72,7 @@ func (r *Reader) loadIndex() error {
 	r.index = make([]IndexEntry, 0, indexSize/40) // rough guess; 40 bytes per entry
 	var offset int64
 	for offset < indexSize {
-		entry, bytesRead, err := shared.DecodeEntry(indexBuf[offset:])
+		entry, bytesRead, err := record.DecodeEntry(indexBuf[offset:])
 		if err != nil {
 			return fmt.Errorf("failed to decode index entry: %w", err)
 		}
@@ -94,14 +94,14 @@ func (r *Reader) loadIndex() error {
 }
 
 // Get performs a lookup and returns the entry if found
-func (r *Reader) Get(key []byte) (shared.Entry, error) {
+func (r *Reader) Get(key []byte) (record.Entry, error) {
 	// Find index entry with key <= target
 	pos := sort.Search(len(r.index), func(i int) bool {
 		return bytes.Compare(r.index[i].Key, key) > 0
 	}) - 1
 
 	if pos < 0 {
-		return shared.Entry{}, fmt.Errorf("key not found: %s", key)
+		return record.Entry{}, fmt.Errorf("key not found: %s", key)
 	}
 
 	// Calculate the block boundary
@@ -112,23 +112,23 @@ func (r *Reader) Get(key []byte) (shared.Entry, error) {
 
 	// Linear scan within the block boundaries
 	offset := r.index[pos].Offset
-	var lastValue shared.Entry
+	var lastValue record.Entry
 	var foundDeleted bool
 
 	for offset < blockEnd {
-		entry, newOffset, err := shared.ReadEntryAt(r.file, offset)
+		entry, newOffset, err := record.ReadEntryAt(r.file, offset)
 		if err != nil {
 			if err == io.EOF {
 				break
 			}
-			return shared.Entry{}, fmt.Errorf("failed to read entry: %w", err)
+			return record.Entry{}, fmt.Errorf("failed to read entry: %w", err)
 		}
 
 		cmp := bytes.Compare(entry.Key, key)
 		if cmp == 0 {
-			if shared.EntryType(entry.Type) == shared.DeleteEntry {
+			if record.EntryType(entry.Type) == record.DeleteEntry {
 				foundDeleted = true
-				lastValue = shared.Entry{}
+				lastValue = record.Entry{}
 			} else {
 				lastValue = entry
 				foundDeleted = false
@@ -143,7 +143,7 @@ func (r *Reader) Get(key []byte) (shared.Entry, error) {
 	}
 
 	if foundDeleted || lastValue.Value == nil {
-		return shared.Entry{}, fmt.Errorf("key not found: %s", key)
+		return record.Entry{}, fmt.Errorf("key not found: %s", key)
 	}
 	return lastValue, nil
 }
@@ -171,7 +171,7 @@ func (r *Reader) Path() string {
 type Iterator struct {
 	reader  *Reader
 	offset  int64
-	entry   *shared.Entry
+	entry   *record.Entry
 	dataEnd int64
 	err     error
 }
@@ -182,7 +182,7 @@ func (it *Iterator) Next() bool {
 		return false
 	}
 
-	entry, newOffset, err := shared.ReadEntryAt(it.reader.file, it.offset)
+	entry, newOffset, err := record.ReadEntryAt(it.reader.file, it.offset)
 	if err != nil {
 		if err == io.EOF {
 			it.entry = nil
@@ -211,14 +211,14 @@ func (it *Iterator) Value() []byte {
 		return nil
 	}
 	// For delete entries, return nil value
-	if it.entry.Type == shared.DeleteEntry {
+	if it.entry.Type == record.DeleteEntry {
 		return nil
 	}
 	return it.entry.Value
 }
 
 // Type returns the current entry's type
-func (it *Iterator) Type() shared.EntryType {
+func (it *Iterator) Type() record.EntryType {
 	if it.entry == nil {
 		return 0
 	}
@@ -227,7 +227,7 @@ func (it *Iterator) Type() shared.EntryType {
 
 // IsDeleted return true if the current value is deleted
 func (it *Iterator) IsDeleted() bool {
-	return it.entry != nil && it.entry.Type == shared.DeleteEntry
+	return it.entry != nil && it.entry.Type == record.DeleteEntry
 }
 
 // Reset resets the iterator

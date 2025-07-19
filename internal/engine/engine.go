@@ -11,7 +11,7 @@ import (
 	"sync/atomic"
 
 	"github.com/MikhailWahib/graveldb/internal/memtable"
-	"github.com/MikhailWahib/graveldb/internal/shared"
+	"github.com/MikhailWahib/graveldb/internal/record"
 	"github.com/MikhailWahib/graveldb/internal/sstable"
 	"github.com/MikhailWahib/graveldb/internal/wal"
 )
@@ -62,11 +62,11 @@ func (e *Engine) OpenDB(dataDir string) error {
 
 	for _, entry := range entries {
 		switch entry.Type {
-		case shared.PutEntry:
+		case record.PutEntry:
 			if err := e.memtable.Put(entry.Key, entry.Value); err != nil {
 				return err
 			}
-		case shared.DeleteEntry:
+		case record.DeleteEntry:
 			if err := e.memtable.Delete(entry.Key); err != nil {
 				return err
 			}
@@ -184,7 +184,7 @@ func (e *Engine) Get(key []byte) ([]byte, bool) {
 	entry, found := e.memtable.Get(key)
 	if found {
 		// If found and marked as deleted, return immediately
-		if entry.Type == shared.DeleteEntry {
+		if entry.Type == record.DeleteEntry {
 			return nil, false
 		}
 		return entry.Value, true
@@ -202,7 +202,7 @@ func (e *Engine) Get(key []byte) ([]byte, bool) {
 			// Use the new Get method instead of Lookup
 			entry, err := reader.Get(key)
 			if err == nil {
-				if entry.Type == shared.DeleteEntry {
+				if entry.Type == record.DeleteEntry {
 					return nil, false
 				}
 				return entry.Value, true
