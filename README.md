@@ -1,4 +1,5 @@
 # GravelDB
+[![CI](https://github.com/MikhailWahib/graveldb/actions/workflows/ci.yml/badge.svg)](https://github.com/MikhailWahib/graveldb/actions/workflows/ci.yml) [![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/MikhailWahib/graveldb)
 
 **GravelDB** is a simple, high-performance key-value store written in Go, based on the LSM-tree (Log-Structured Merge-tree) architecture. It is optimized for high write throughput and efficient disk usage, making it suitable for write-heavy workloads and embedded database scenarios.
 
