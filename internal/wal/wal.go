@@ -3,7 +3,6 @@ package wal
 
 import (
 	"bufio"
-	"bytes"
 	"errors"
 	"io"
 	"os"
@@ -23,11 +22,10 @@ type WAL struct {
 	mu   sync.Mutex
 	once sync.Once
 
-	path        string
-	file        *os.File
-	writeOffset int64
+	path   string
+	file   *os.File
+	writer *bufio.Writer
 
-	buffer      bytes.Buffer
 	flushTimer  *time.Timer
 	flushNotify chan struct{}
 	closeChan   chan struct{}
@@ -36,12 +34,7 @@ type WAL struct {
 
 // NewWAL creates a new WAL
 func NewWAL(path string) (*WAL, error) {
-	file, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE, 0644)
-	if err != nil {
-		return nil, err
-	}
-
-	fileInfo, err := file.Stat()
+	file, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
 	if err != nil {
 		return nil, err
 	}
@@ -49,7 +42,7 @@ func NewWAL(path string) (*WAL, error) {
 	wal := &WAL{
 		path:        path,
 		file:        file,
-		writeOffset: fileInfo.Size(),
+		writer:      bufio.NewWriterSize(file, flushThreshold),
 		flushNotify: make(chan struct{}, 1),
 		closeChan:   make(chan struct{}),
 	}
@@ -58,7 +51,7 @@ func NewWAL(path string) (*WAL, error) {
 	return wal, nil
 }
 
-// writeEntry writes an entry to the buffer and schedules a flush
+// writeEntry serializes and writes an entry to the buffer
 func (w *WAL) writeEntry(e shared.Entry) error {
 	w.mu.Lock()
 	defer w.mu.Unlock()
@@ -67,14 +60,12 @@ func (w *WAL) writeEntry(e shared.Entry) error {
 		return errors.New("WAL is closed")
 	}
 
-	// Serialize entry to buffer
 	data := shared.SerializeEntry(e)
-	if _, err := w.buffer.Write(data); err != nil {
+	if _, err := w.writer.Write(data); err != nil {
 		return err
 	}
 
-	// Trigger flush if buffer exceeds threshold
-	if w.buffer.Len() >= flushThreshold {
+	if w.writer.Buffered() >= flushThreshold {
 		w.signalFlush()
 	}
 	return nil
@@ -102,7 +93,7 @@ func (w *WAL) AppendDelete(key []byte) error {
 func (w *WAL) signalFlush() {
 	select {
 	case w.flushNotify <- struct{}{}:
-	default: // Already pending
+	default:
 	}
 }
 
@@ -127,7 +118,10 @@ func (w *WAL) resetTimer() {
 	defer w.mu.Unlock()
 	if !w.closed && w.flushTimer != nil {
 		if !w.flushTimer.Stop() {
-			<-w.flushTimer.C // drain if needed
+			select {
+			case <-w.flushTimer.C:
+			default:
+			}
 		}
 		w.flushTimer.Reset(flushInterval)
 	}
@@ -146,40 +140,34 @@ func (w *WAL) flushBuffer() {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 
-	if w.buffer.Len() == 0 || w.closed {
+	if w.closed || w.writer.Buffered() == 0 {
 		return
 	}
 
-	// Write buffered data to disk
-	n, err := w.file.WriteAt(w.buffer.Bytes(), w.writeOffset)
-	if err != nil {
+	if err := w.writer.Flush(); err != nil {
 		return
 	}
 
-	// Update write offset
-	w.writeOffset += int64(n)
-
-	// Sync to ensure durability
 	if err := w.file.Sync(); err != nil {
 		return
 	}
-
-	// Reset buffer for new writes
-	w.buffer.Reset()
 }
 
-// Replay reads entries from the beginning, returning 0 offset at EOF
+// Replay reads entries from the beginning of the WAL file
 func (w *WAL) Replay() ([]shared.Entry, error) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 
-	_, err := w.file.Seek(0, io.SeekStart)
+	readFile, err := os.Open(w.path)
 	if err != nil {
 		return nil, err
 	}
-	reader := bufio.NewReader(w.file)
+	defer func() {
+		_ = readFile.Close()
+	}()
 
-	var walEntries []shared.Entry
+	reader := bufio.NewReader(readFile)
+	var entries []shared.Entry
 	for {
 		entry, err := shared.ReadEntryFromReader(reader)
 		if err != nil {
@@ -188,12 +176,12 @@ func (w *WAL) Replay() ([]shared.Entry, error) {
 			}
 			return nil, err
 		}
-		walEntries = append(walEntries, entry)
+		entries = append(entries, entry)
 	}
-	return walEntries, nil
+	return entries, nil
 }
 
-// Close closes the WAL file
+// Close flushes all data and closes the WAL
 func (w *WAL) Close() error {
 	if w.closed {
 		return nil
@@ -207,6 +195,5 @@ func (w *WAL) Close() error {
 		w.closed = true
 		err = w.file.Close()
 	})
-
 	return err
 }
