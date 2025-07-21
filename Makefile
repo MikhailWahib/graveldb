@@ -1,4 +1,4 @@
-.PHONY: compile-tests compile-specific-test debug-test clean
+.PHONY: compile-tests debug-test bench clean
 
 BIN_DIR = ./bin/tests
 
@@ -21,6 +21,9 @@ debug-test:
 	$(MAKE) compile-tests; \
 	dlv exec $(BIN_DIR)/$(notdir $(TEST)).test; \
 
+
+bench:
+	go test -bench=. ./internal/bench -benchmem
 
 clean:
 	@echo "Cleaning up compiled test binaries..."
