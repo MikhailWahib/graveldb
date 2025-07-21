@@ -137,7 +137,7 @@ func (sl *SkipList) Get(key []byte) (record.Entry, bool) {
 	return record.Entry{}, false
 }
 
-// Delete marks a key as deleted in the skiplist by setting its value to TOMBSTONE.
+// Delete marks a key as deleted in the skiplist.
 func (sl *SkipList) Delete(key []byte) error {
 	entry, _ := sl.Get(key)
 

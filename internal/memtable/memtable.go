@@ -63,7 +63,7 @@ func (m *SkiplistMemtable) Get(key []byte) (record.Entry, bool) {
 	return m.sl.Get(key)
 }
 
-// Delete marks a key from the memtable as removed with TOMBSTONE
+// Delete marks the given key as deleted
 func (m *SkiplistMemtable) Delete(key []byte) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()

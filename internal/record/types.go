@@ -18,5 +18,3 @@ type Entry struct {
 	Key   []byte
 	Value []byte
 }
-
-// TODO: add a Size() method
