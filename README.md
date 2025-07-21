@@ -9,11 +9,11 @@
 
 ## 🚀 Highlights
 
-- ⚡ Fast writes via in-memory memtable + WAL  
-- 🧱 Immutable SSTables for optimized reads  
-- 🔄 Tiered compaction for efficient storage  
-- 🔒 Thread-safe by default  
-- ⚙️ Configurable tuning parameters  
+- ⚡ Fast writes via in-memory memtable + WAL
+- 🧱 Immutable SSTables for optimized reads
+- 🔄 Tiered compaction for efficient storage
+- 🔒 Thread-safe by default
+- ⚙️ Configurable tuning parameters
 
 ---
 
@@ -25,7 +25,7 @@ Add GravelDB to your Go project:
 
 ```sh
 go get github.com/MikhailWahib/graveldb
-````
+```
 
 ### Quickstart
 
@@ -38,7 +38,12 @@ import (
 )
 
 func main() {
-	db, err := graveldb.Open("/tmp/db")
+	cfg := graveldb.DefaultConfig()
+	// Optionally customize config:
+	// cfg.MaxMemtableSize = 8 * 1024 * 1024 // 8MB
+	// cfg.MaxTablesPerTier = 8
+
+	db, err := graveldb.Open("/tmp/db", cfg)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -58,21 +63,85 @@ func main() {
 ### API Overview
 
 ```go
-Open(path string) (*DB, error)
+Open(path string, cfg *graveldb.Config) (*DB, error)
 Put(key, value []byte) error
 Get(key []byte) ([]byte, bool)
 Delete(key []byte) error
-SetMaxMemtableSize(n int)        // Default: 4MB
-SetMaxTablesPerTier(n int)       // Default: 4
 Close() error
 ```
 
 ### Tuning Performance
 
+You can tune GravelDB's performance by customizing the `graveldb.Config` struct.
+
+#### Configuration Fields
+
+Below are the available fields in `graveldb.Config` and their roles:
+
+- **MaxMemtableSize** (`int`, default: `4 * 1024 * 1024`):  
+  The maximum size (in bytes) of the in-memory memtable before it is flushed to disk as an SSTable.  
+  _Higher values improve write throughput but use more memory._
+
+- **MaxTablesPerTier** (`int`, default: `4`):  
+  The maximum number of SSTables allowed per tier before compaction is triggered.  
+  _Lower values trigger more frequent compactions, improving read performance at the cost of more write amplification._
+
+- **IndexInterval** (`int`, default: `16`):  
+  The number of entries between index points in each SSTable.  
+  _Lower values make lookups faster but increase index size._
+
+- **FlushThreshold** (`int`, default: `64 * 1024`):  
+  The number of bytes written to the Write-Ahead Log (WAL) before it is flushed to disk.  
+  _Higher values can improve write performance but increase the risk of data loss on crash._
+
+- **FlushInterval** (`time.Duration`, default: `10ms`):  
+  The maximum time between WAL flushes, even if the threshold is not reached.  
+  _Lower values improve durability but may reduce throughput._
+
+---
+
+#### How to Set Config Values
+
+There are **two ways** to set up your config:
+
+##### 1. Start from Defaults and Override
+
 ```go
-db.SetMaxMemtableSize(8 * 1024 * 1024) // 8MB
-db.SetMaxTablesPerTier(8)              // Compaction threshold
+cfg := graveldb.DefaultConfig()
+cfg.MaxMemtableSize = 8 * 1024 * 1024 // 8MB memtable flush threshold
+cfg.MaxTablesPerTier = 8              // Compaction threshold per tier
+cfg.IndexInterval = 32                // Sparse index interval for SSTables
+cfg.FlushThreshold = 128 * 1024       // WAL flush threshold (bytes)
+cfg.FlushInterval = 20 * time.Millisecond // WAL flush interval
+
+db, err := graveldb.Open("/tmp/db", cfg)
 ```
+
+##### 2. Manual Construction (Partial Fields)
+
+You can set only the fields you care about. Any unset fields will be automatically set to their default values:
+
+```go
+cfg := &graveldb.Config{
+    MaxMemtableSize:  8 * 1024 * 1024,
+    MaxTablesPerTier: 8,
+    // Other fields can be omitted
+}
+
+db, err := graveldb.Open("/tmp/db", cfg)
+```
+
+---
+
+#### Config Fields
+
+| Field            | Type          | Default           | Description                           |
+| ---------------- | ------------- | ----------------- | ------------------------------------- |
+| MaxMemtableSize  | int           | `4 * 1024 * 1024` | Memtable flush threshold (bytes)      |
+| MaxTablesPerTier | int           | `4`               | SSTable compaction threshold per tier |
+| IndexInterval    | int           | `16`              | Sparse index interval for SSTables    |
+| FlushThreshold   | int           | `64 * 1024`       | WAL flush threshold (bytes)           |
+| FlushInterval    | time.Duration | `10ms`            | WAL flush interval                    |
 
 ---
 
@@ -88,13 +157,13 @@ make test   # or: go test -race ./...
 
 ### Project Layout
 
-* `graveldb.go` – public-facing API
-* `internal/engine/` – core engine logic
-* `internal/memtable/` – in-memory skiplist
-* `internal/sstable/` – disk-based SSTables
-* `internal/wal/` – write-ahead log
-* `internal/record/` – binary encoding
-* `Makefile` – build/test commands
+- `graveldb.go` – public-facing API
+- `internal/engine/` – core engine logic
+- `internal/memtable/` – in-memory skiplist
+- `internal/sstable/` – disk-based SSTables
+- `internal/wal/` – write-ahead log
+- `internal/record/` – binary encoding
+- `Makefile` – build/test commands
 
 ### Testing
 

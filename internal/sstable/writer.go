@@ -7,12 +7,8 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/MikhailWahib/graveldb/internal/config"
 	"github.com/MikhailWahib/graveldb/internal/record"
-)
-
-const (
-	// indexInterval controls how many entries to skip before adding to the sparse index
-	indexInterval = 16
 )
 
 // Writer provides functionality to write to an SSTable
@@ -24,19 +20,21 @@ type Writer struct {
 	indexSize int64
 	count     int // tracks number of entries for sparse indexing
 	finished  bool
+	config    *config.Config
 }
 
 // NewWriter creates a new SSTable writer
-func NewWriter(path string) (*Writer, error) {
+func NewWriter(path string, config *config.Config) (*Writer, error) {
 	file, err := os.OpenFile(path, os.O_CREATE|os.O_RDWR|os.O_TRUNC, 0644)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create SSTable: %w", err)
 	}
 
 	return &Writer{
-		file:  file,
-		path:  path,
-		index: make([]IndexEntry, 0),
+		file:   file,
+		path:   path,
+		index:  make([]IndexEntry, 0),
+		config: config,
 	}, nil
 }
 
@@ -75,7 +73,7 @@ func (w *Writer) writeEntry(entry record.Entry) error {
 	}
 	w.offset = n
 
-	if w.count%indexInterval == 0 {
+	if w.count%w.config.IndexInterval == 0 {
 		w.index = append(w.index, IndexEntry{Key: entry.Key, Offset: entryOffset})
 	}
 	w.count++

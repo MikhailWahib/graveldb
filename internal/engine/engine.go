@@ -10,6 +10,7 @@ import (
 	"sync"
 	"sync/atomic"
 
+	"github.com/MikhailWahib/graveldb/internal/config"
 	"github.com/MikhailWahib/graveldb/internal/memtable"
 	"github.com/MikhailWahib/graveldb/internal/record"
 	"github.com/MikhailWahib/graveldb/internal/sstable"
@@ -29,16 +30,23 @@ type Engine struct {
 	sstCounter       *atomic.Uint64
 	maxMemtableSize  int
 	maxTablesPerTier int
+	config           *config.Config
 }
 
 // NewEngine creates a new Engine instance for the given data directory.
-func NewEngine() *Engine {
+func NewEngine(cfg *config.Config) *Engine {
+	if cfg == nil {
+		cfg = config.DefaultConfig()
+	} else {
+		cfg.FillDefaults()
+	}
 	return &Engine{
 		memtable:         memtable.NewMemtable(),
 		tiers:            make([][]*sstable.Reader, 0),
 		sstCounter:       new(atomic.Uint64),
-		maxMemtableSize:  MaxMemtableSize,
-		maxTablesPerTier: MaxTablesPerTier,
+		maxMemtableSize:  cfg.MaxMemtableSize,
+		maxTablesPerTier: cfg.MaxTablesPerTier,
+		config:           cfg,
 	}
 }
 
@@ -50,7 +58,7 @@ func (e *Engine) OpenDB(dataDir string) error {
 	}
 	e.dataDir = dataDir
 
-	wal, err := wal.NewWAL(dataDir + "/wal.log")
+	wal, err := wal.NewWAL(dataDir+"/wal.log", e.config)
 	if err != nil {
 		return err
 	}
@@ -232,7 +240,7 @@ func (e *Engine) flushMemtable(mt memtable.Memtable) error {
 
 	filename := fmt.Sprintf("%s/%06d.sst", l0Dir, e.sstCounter.Add(1))
 
-	writer, err := sstable.NewWriter(filename)
+	writer, err := sstable.NewWriter(filename, e.config)
 	if err != nil {
 		return err
 	}
@@ -277,20 +285,6 @@ func (e *Engine) flushMemtable(mt memtable.Memtable) error {
 	}
 
 	return nil
-}
-
-// SetMaxMemtableSize sets the maximum size for memtable before flushing.
-func (e *Engine) SetMaxMemtableSize(sizeInBytes int) {
-	e.mu.Lock()
-	defer e.mu.Unlock()
-	e.maxMemtableSize = sizeInBytes
-}
-
-// SetMaxTablesPerTier sets the maximum number of SSTables per tier before compaction.
-func (e *Engine) SetMaxTablesPerTier(n int) {
-	e.mu.Lock()
-	defer e.mu.Unlock()
-	e.maxTablesPerTier = n
 }
 
 // Close gracefully shuts down the engine, ensuring all data is persisted.

@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/MikhailWahib/graveldb/internal/config"
 	"github.com/MikhailWahib/graveldb/internal/record"
 	"github.com/MikhailWahib/graveldb/internal/sstable"
 	"github.com/stretchr/testify/assert"
@@ -28,7 +29,7 @@ func TestSSTableWriteRead(t *testing.T) {
 	sstPath := filepath.Join(tempDir, "01.sst")
 
 	// Create and write to SSTable
-	sst, err := sstable.NewWriter(sstPath)
+	sst, err := sstable.NewWriter(sstPath, config.DefaultConfig())
 	require.NoError(t, err)
 
 	// Write entries
@@ -67,7 +68,7 @@ func TestSSTableEmptyValue(t *testing.T) {
 	sstPath := filepath.Join(tempDir, "empty_value.sst")
 
 	// Create SSTable with empty values
-	sst, err := sstable.NewWriter(sstPath)
+	sst, err := sstable.NewWriter(sstPath, config.DefaultConfig())
 	require.NoError(t, err)
 
 	err = sst.PutEntry([]byte("key1"), []byte(""))
@@ -96,7 +97,7 @@ func TestSSTableLargeKeyValues(t *testing.T) {
 	sstPath := filepath.Join(tempDir, "large_data.sst")
 
 	// Create SSTable with large values
-	sst, err := sstable.NewWriter(sstPath)
+	sst, err := sstable.NewWriter(sstPath, config.DefaultConfig())
 	require.NoError(t, err)
 
 	// Create a 100KB value
@@ -148,7 +149,7 @@ func BenchmarkSSTableWriting(b *testing.B) {
 		b.StopTimer()
 		tempDir := b.TempDir()
 		sstPath := filepath.Join(tempDir, "bench_write.sst")
-		sst, err := sstable.NewWriter(sstPath)
+		sst, err := sstable.NewWriter(sstPath, config.DefaultConfig())
 		if err != nil {
 			b.Fatalf("Failed to open SSTable for write: %v", err)
 		}
@@ -182,7 +183,7 @@ func BenchmarkSSTableReading(b *testing.B) {
 	sstPath := filepath.Join(tempDir, "bench_read.sst")
 
 	// Create a benchmark SSTable first
-	sst, err := sstable.NewWriter(sstPath)
+	sst, err := sstable.NewWriter(sstPath, config.DefaultConfig())
 	if err != nil {
 		b.Fatalf("Failed to open SSTable for write: %v", err)
 	}
@@ -232,7 +233,7 @@ func TestNonExistentKeyLookup(t *testing.T) {
 	sstPath := filepath.Join(tempDir, "test_missing.sst")
 
 	// Create the SSTable with some entries
-	sst, err := sstable.NewWriter(sstPath)
+	sst, err := sstable.NewWriter(sstPath, config.DefaultConfig())
 	require.NoError(t, err)
 
 	err = sst.PutEntry([]byte("a"), []byte("apple"))
@@ -273,7 +274,7 @@ func Test_DeleteSST(t *testing.T) {
 	tempDir := t.TempDir()
 	sstPath := filepath.Join(tempDir, "delete-test.sst")
 
-	sst, err := sstable.NewWriter(sstPath)
+	sst, err := sstable.NewWriter(sstPath, config.DefaultConfig())
 	require.NoError(t, err)
 
 	err = sst.PutEntry([]byte("key"), []byte("value"))
@@ -296,7 +297,7 @@ func TestSSTableIterator(t *testing.T) {
 	sstPath := filepath.Join(tempDir, "test_iterator.sst")
 
 	// Create the SSTable with some entries
-	sst, err := sstable.NewWriter(sstPath)
+	sst, err := sstable.NewWriter(sstPath, config.DefaultConfig())
 	require.NoError(t, err)
 
 	// Define test cases
@@ -356,7 +357,7 @@ func TestSSTableEmptyIterator(t *testing.T) {
 	sstPath := filepath.Join(tempDir, "test_empty_iterator.sst")
 
 	// Create an empty SSTable
-	sst, err := sstable.NewWriter(sstPath)
+	sst, err := sstable.NewWriter(sstPath, config.DefaultConfig())
 	require.NoError(t, err)
 
 	err = sst.Finish()
@@ -380,7 +381,7 @@ func TestSSTableEmptyIterator(t *testing.T) {
 }
 
 func createSST(t *testing.T, path string, entries []entry) *sstable.Reader {
-	sst, err := sstable.NewWriter(path)
+	sst, err := sstable.NewWriter(path, config.DefaultConfig())
 	require.NoError(t, err)
 
 	for _, e := range entries {
@@ -428,7 +429,7 @@ func TestMerger_MergesCorrectly(t *testing.T) {
 
 	// Setup output SSTable
 	outputPath := filepath.Join(tempDir, "merged.sst")
-	outputSST, err := sstable.NewWriter(outputPath)
+	outputSST, err := sstable.NewWriter(outputPath, config.DefaultConfig())
 	require.NoError(t, err)
 
 	// Merge
@@ -507,7 +508,7 @@ func TestMerger_MultipleSSTablesMerge(t *testing.T) {
 
 	// Output SSTable
 	mergedPath := filepath.Join(tempDir, "merged_multi.sst")
-	output, err := sstable.NewWriter(mergedPath)
+	output, err := sstable.NewWriter(mergedPath, config.DefaultConfig())
 	require.NoError(t, err)
 
 	// Merge

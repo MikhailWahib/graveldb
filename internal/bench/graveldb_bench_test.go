@@ -8,12 +8,13 @@ import (
 	"testing"
 
 	"github.com/MikhailWahib/graveldb"
+	"github.com/MikhailWahib/graveldb/internal/config"
 )
 
 func setupBenchDB(b *testing.B) (*graveldb.DB, func()) {
 	tmpDir := filepath.Join(os.TempDir(), fmt.Sprintf("graveldb_bench_%d", rand.Int63()))
 
-	db, err := graveldb.Open(tmpDir)
+	db, err := graveldb.Open(tmpDir, config.DefaultConfig())
 	if err != nil {
 		b.Fatalf("Failed to open database: %v", err)
 	}
@@ -42,8 +43,6 @@ func BenchmarkWrite(b *testing.B) {
 	db, cleanup := setupBenchDB(b)
 	defer cleanup()
 
-	db.SetMaxMemtableSize(64 * 1024 * 1024)
-
 	value := generateValue(1024)
 
 	for i := 0; b.Loop(); i++ {
@@ -58,8 +57,6 @@ func BenchmarkWrite(b *testing.B) {
 func BenchmarkRead(b *testing.B) {
 	db, cleanup := setupBenchDB(b)
 	defer cleanup()
-
-	db.SetMaxMemtableSize(64 * 1024 * 1024)
 
 	// Pre-populate
 	value := generateValue(1024)
@@ -79,8 +76,6 @@ func BenchmarkRandomRead(b *testing.B) {
 	db, cleanup := setupBenchDB(b)
 	defer cleanup()
 
-	db.SetMaxMemtableSize(64 * 1024 * 1024)
-
 	// Pre-populate
 	value := generateValue(1024)
 	numKeys := 10000
@@ -99,8 +94,6 @@ func BenchmarkRandomWrite(b *testing.B) {
 	db, cleanup := setupBenchDB(b)
 	defer cleanup()
 
-	db.SetMaxMemtableSize(64 * 1024 * 1024)
-
 	value := generateValue(1024)
 
 	for b.Loop() {
@@ -115,8 +108,6 @@ func BenchmarkRandomWrite(b *testing.B) {
 func BenchmarkConcurrentRead(b *testing.B) {
 	db, cleanup := setupBenchDB(b)
 	defer cleanup()
-
-	db.SetMaxMemtableSize(64 * 1024 * 1024)
 
 	// Pre-populate
 	value := generateValue(1024)
@@ -139,8 +130,6 @@ func BenchmarkConcurrentRead(b *testing.B) {
 func BenchmarkConcurrentWrite(b *testing.B) {
 	db, cleanup := setupBenchDB(b)
 	defer cleanup()
-
-	db.SetMaxMemtableSize(64 * 1024 * 1024)
 
 	value := generateValue(1024)
 	b.ResetTimer()

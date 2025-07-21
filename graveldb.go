@@ -30,8 +30,15 @@
 package graveldb
 
 import (
+	"github.com/MikhailWahib/graveldb/internal/config"
 	"github.com/MikhailWahib/graveldb/internal/engine"
 )
+
+// Config is an alias for config.Config, re-exported for user convenience.
+type Config = config.Config
+
+// DefaultConfig returns a Config struct populated with default values. Re-exported for user convenience.
+var DefaultConfig = config.DefaultConfig
 
 // DB represents a thread-safe GravelDB instance.
 // It provides methods for storing, retrieving, and deleting key-value pairs,
@@ -46,8 +53,11 @@ type DB struct {
 // it will be opened with its data loaded.
 //
 // Returns a DB instance or an error if the database can't be opened.
-func Open(path string) (*DB, error) {
-	e := engine.NewEngine()
+func Open(path string, cfg *config.Config) (*DB, error) {
+	if cfg == nil {
+		cfg = config.DefaultConfig()
+	}
+	e := engine.NewEngine(cfg)
 	if err := e.OpenDB(path); err != nil {
 		return nil, err
 	}
@@ -72,18 +82,6 @@ func (db *DB) Get(key []byte) ([]byte, bool) {
 // Returns an error only if the deletion fails.
 func (db *DB) Delete(key []byte) error {
 	return db.engine.Delete(key)
-}
-
-// SetMaxMemtableSize sets the memtable flush threshold in bytes.
-// Higher values improve write throughput at the cost of memory and recovery time.
-func (db *DB) SetMaxMemtableSize(sizeInBytes int) {
-	db.engine.SetMaxMemtableSize(sizeInBytes)
-}
-
-// SetMaxTablesPerTier sets the SSTable compaction threshold per tier.
-// Lower values trigger more frequent compactions, improving read performance.
-func (db *DB) SetMaxTablesPerTier(n int) {
-	db.engine.SetMaxTablesPerTier(n)
 }
 
 // Close gracefully shuts down the database, ensuring all data is persisted.
