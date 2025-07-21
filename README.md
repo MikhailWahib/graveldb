@@ -1,43 +1,39 @@
 # GravelDB
-[![CI](https://github.com/MikhailWahib/graveldb/actions/workflows/ci.yml/badge.svg)](https://github.com/MikhailWahib/graveldb/actions/workflows/ci.yml) [![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/MikhailWahib/graveldb)
 
-**GravelDB** is a lightweight, high-throughput key-value store written in Go, based on the LSM-tree (Log-Structured Merge-tree) architecture. It targets write-heavy workloads with strong durability guarantees and low disk overhead.
+[![CI](https://github.com/MikhailWahib/graveldb/actions/workflows/ci.yml/badge.svg)](https://github.com/MikhailWahib/graveldb/actions/workflows/ci.yml)
+[![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/MikhailWahib/graveldb)
 
-## Highlights
+**GravelDB** is a lightweight, high-throughput key-value store written in Go. It’s built on the LSM-tree (Log-Structured Merge-tree) architecture and is optimized for write-heavy workloads with strong durability and low disk overhead.
 
-- ⚡ **Fast writes** via in-memory memtable and WAL  
-- 🧱 **Immutable SSTables** for optimized disk I/O  
-- 🔄 **Tiered compaction** for space efficiency  
-- 🔒 **Thread-safe** by design  
-- ⚙️ **Tunable performance knobs**  
 ---
 
-## Installation
+## 🚀 Highlights
 
-**Requires Go 1.21+**
+- ⚡ Fast writes via in-memory memtable + WAL  
+- 🧱 Immutable SSTables for optimized reads  
+- 🔄 Tiered compaction for efficient storage  
+- 🔒 Thread-safe by default  
+- ⚙️ Configurable tuning parameters  
 
-To add GravelDB to your Go project:
+---
+
+## 📦 Package Usage
+
+**Go 1.21+ required**
+
+Add GravelDB to your Go project:
 
 ```sh
 go get github.com/MikhailWahib/graveldb
 ````
 
-To test and build it locally:
-
-```sh
-git clone https://github.com/MikhailWahib/graveldb.git
-cd graveldb
-make test   # or: go test -race ./...
-```
-
-## Quickstart
+### Quickstart
 
 ```go
 package main
 
 import (
 	"log"
-
 	"github.com/MikhailWahib/graveldb"
 )
 
@@ -59,37 +55,55 @@ func main() {
 }
 ```
 
-## API Overview
+### API Overview
 
-* `Open(path string) (*DB, error)`
-* `Put(key, value []byte) error`
-* `Get(key []byte) ([]byte, bool)`
-* `Delete(key []byte) error`
-* `SetMaxMemtableSize(n int)` — default: 4MB
-* `SetMaxTablesPerTier(n int)` — default: 4
-* `Close() error`
+```go
+Open(path string) (*DB, error)
+Put(key, value []byte) error
+Get(key []byte) ([]byte, bool)
+Delete(key []byte) error
+SetMaxMemtableSize(n int)        // Default: 4MB
+SetMaxTablesPerTier(n int)       // Default: 4
+Close() error
+```
 
-## Performance Tuning
+### Tuning Performance
 
 ```go
 db.SetMaxMemtableSize(8 * 1024 * 1024) // 8MB
-db.SetMaxTablesPerTier(8)              // compaction threshold
+db.SetMaxTablesPerTier(8)              // Compaction threshold
 ```
 
-## Project Structure
+---
 
-* `graveldb.go` — public API
-* `internal/engine/` — core storage engine
-* `internal/memtable/` — skiplist-based in-memory store
-* `internal/sstable/` — sorted string table persistence
-* `internal/wal/` — write-ahead log
-* `internal/record/` — binary encoding for entry I/O
-* `Makefile` — build/test targets
+## 🛠️ Local Development
 
-## Testing
+To run or modify the code locally:
+
+```sh
+git clone https://github.com/MikhailWahib/graveldb.git
+cd graveldb
+make test   # or: go test -race ./...
+```
+
+### Project Layout
+
+* `graveldb.go` – public-facing API
+* `internal/engine/` – core engine logic
+* `internal/memtable/` – in-memory skiplist
+* `internal/sstable/` – disk-based SSTables
+* `internal/wal/` – write-ahead log
+* `internal/record/` – binary encoding
+* `Makefile` – build/test commands
+
+### Testing
 
 ```sh
 make test
 # or
 go test -race ./...
 ```
+
+---
+
+GravelDB is designed for learning and experimentation. Contributions and feedback are welcome.
