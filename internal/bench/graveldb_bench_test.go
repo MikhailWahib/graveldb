@@ -19,8 +19,8 @@ func setupBenchDB(b *testing.B) (*graveldb.DB, func()) {
 	}
 
 	cleanup := func() {
-		db.Close()
-		os.RemoveAll(tmpDir)
+		_ = db.Close()
+		_ = os.RemoveAll(tmpDir)
 	}
 
 	return db, cleanup
@@ -66,7 +66,7 @@ func BenchmarkRead(b *testing.B) {
 	numKeys := 10000
 	for i := range numKeys {
 		key := generateKey(i)
-		db.Put(key, value)
+		_ = db.Put(key, value)
 	}
 
 	for i := 0; b.Loop(); i++ {
@@ -86,7 +86,7 @@ func BenchmarkRandomRead(b *testing.B) {
 	numKeys := 10000
 	for i := range numKeys {
 		key := generateKey(i)
-		db.Put(key, value)
+		_ = db.Put(key, value)
 	}
 
 	for b.Loop() {
@@ -123,7 +123,7 @@ func BenchmarkConcurrentRead(b *testing.B) {
 	numKeys := 10000
 	for i := range numKeys {
 		key := generateKey(i)
-		db.Put(key, value)
+		_ = db.Put(key, value)
 	}
 
 	b.ResetTimer()
