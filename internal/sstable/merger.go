@@ -35,7 +35,7 @@ type iteratorItem struct {
 	value    []byte
 	iter     *Iterator
 	deleted  bool
-	priority int // lower = newer
+	priority int // higher = newer
 }
 
 type iteratorHeap []*iteratorItem
@@ -47,8 +47,8 @@ func (h iteratorHeap) Less(i, j int) bool {
 	if keyCmp != 0 {
 		return keyCmp < 0
 	}
-	// When keys match, pick item from newer SSTable (lower priority value wins)
-	return h[i].priority < h[j].priority
+	// When keys match, pick item from newer SSTable (higher priority value wins)
+	return h[i].priority > h[j].priority
 }
 
 func (h iteratorHeap) Swap(i, j int) {
@@ -77,7 +77,7 @@ func (m *Merger) Merge() error {
 	heap.Init(ih)
 
 	// Reverse assign priority: 0 = newest, N = oldest
-	for i := len(m.sources) - 1; i >= 0; i-- {
+	for i := range len(m.sources) {
 		source := m.sources[i]
 		iter := source.NewIterator()
 		if iter.Next() {
@@ -86,7 +86,7 @@ func (m *Merger) Merge() error {
 				value:    iter.Value(),
 				iter:     iter,
 				deleted:  iter.IsDeleted(),
-				priority: len(m.sources) - 1 - i, // lower = newer
+				priority: i, // higher = newer
 			})
 		}
 	}
