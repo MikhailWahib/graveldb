@@ -15,8 +15,7 @@ import (
 
 // WAL manages the write-ahead log file
 type WAL struct {
-	mu   sync.Mutex
-	once sync.Once
+	mu sync.RWMutex
 
 	path   string
 	file   *os.File
@@ -154,9 +153,6 @@ func (w *WAL) flushBuffer() {
 
 // Replay reads entries from the beginning of the WAL file
 func (w *WAL) Replay() ([]record.Entry, error) {
-	w.mu.Lock()
-	defer w.mu.Unlock()
-
 	readFile, err := os.Open(w.path)
 	if err != nil {
 		return nil, err
@@ -186,13 +182,9 @@ func (w *WAL) Close() error {
 		return nil
 	}
 
-	var err error
-	w.once.Do(func() {
-		close(w.closeChan)
-		w.flushTimer.Stop()
-		w.flushBuffer()
-		w.closed = true
-		err = w.file.Close()
-	})
-	return err
+	close(w.closeChan)
+	w.flushTimer.Stop()
+	w.flushBuffer()
+	w.closed = true
+	return w.file.Close()
 }

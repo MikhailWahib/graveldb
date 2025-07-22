@@ -19,7 +19,8 @@ import (
 
 // Engine is the main database engine, managing memtable, WAL, SSTables, and compaction.
 type Engine struct {
-	mu sync.RWMutex
+	mu   sync.RWMutex
+	once sync.Once
 
 	dataDir          string
 	memtable         memtable.Memtable
@@ -160,6 +161,9 @@ func (e *Engine) Tiers() [][]*sstable.Reader {
 
 // Put inserts or updates a key-value pair in the database.
 func (e *Engine) Put(key, value []byte) error {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+
 	if err := e.wal.AppendPut(key, value); err != nil {
 		return err
 	}
@@ -168,18 +172,17 @@ func (e *Engine) Put(key, value []byte) error {
 		return err
 	}
 
-	e.mu.Lock()
-	defer e.mu.Unlock()
-
 	if e.memtable.Size() > e.maxMemtableSize {
 		old := e.memtable
 		e.memtable = memtable.NewMemtable()
 		e.wg.Add(1)
 		go func() {
 			defer e.wg.Done()
+			e.mu.Lock()
 			if err := e.flushMemtable(old); err != nil {
 				log.Printf("flushMemtable error: %v", err)
 			}
+			e.mu.Unlock()
 		}()
 	}
 
@@ -188,6 +191,9 @@ func (e *Engine) Put(key, value []byte) error {
 
 // Get retrieves the value for a given key, searching memtable and all SSTable tiers.
 func (e *Engine) Get(key []byte) ([]byte, bool) {
+	e.mu.RLock()
+	defer e.mu.RUnlock()
+
 	// First check memtable
 	entry, found := e.memtable.Get(key)
 	if found {
@@ -199,9 +205,6 @@ func (e *Engine) Get(key []byte) ([]byte, bool) {
 	}
 
 	// Not found in memtable, search in disk
-	e.mu.RLock()
-	defer e.mu.RUnlock()
-
 	// Search all tiers, newest to oldest
 	for _, tier := range e.tiers {
 		for i := len(tier) - 1; i >= 0; i-- {
@@ -223,6 +226,9 @@ func (e *Engine) Get(key []byte) ([]byte, bool) {
 
 // Delete removes a key from the database.
 func (e *Engine) Delete(key []byte) error {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+
 	if err := e.wal.AppendDelete(key); err != nil {
 		return err
 	}
@@ -261,7 +267,6 @@ func (e *Engine) flushMemtable(mt memtable.Memtable) error {
 		return fmt.Errorf("failed to open SSTable for reading: %w", err)
 	}
 
-	e.mu.Lock()
 	// Ensure tier 0 exists
 	if len(e.tiers) == 0 {
 		e.tiers = append(e.tiers, []*sstable.Reader{})
@@ -271,7 +276,6 @@ func (e *Engine) flushMemtable(mt memtable.Memtable) error {
 	e.tiers[0] = append(e.tiers[0], reader)
 
 	shouldCompact := e.compactionMgr.shouldCompactTier(0)
-	e.mu.Unlock()
 
 	// Run compaction on T0 if needed
 	if shouldCompact {
@@ -296,36 +300,38 @@ func (e *Engine) flushMemtable(mt memtable.Memtable) error {
 // After calling Close, the engine should not be used for any operations.
 // Returns an error if any cleanup operation fails.
 func (e *Engine) Close() error {
-	// Flush any remaining memtable data
-	if e.memtable != nil && e.memtable.Size() > 0 {
-		old := e.memtable
-		e.memtable = memtable.NewMemtable()
-		// Flush synchronously to ensure data is persisted
-		if err := e.flushMemtable(old); err != nil {
-			return fmt.Errorf("failed to flush final memtable: %w", err)
+	var finalErr error
+
+	e.once.Do(func() {
+		// Flush any remaining memtable data
+		if e.memtable != nil && e.memtable.Size() > 0 {
+			old := e.memtable
+			e.memtable = memtable.NewMemtable()
+			// Flush synchronously to ensure data is persisted
+			if err := e.flushMemtable(old); err != nil {
+				finalErr = fmt.Errorf("failed to flush final memtable: %w", err)
+			}
 		}
-	}
 
-	e.mu.Lock()
-	// Close opened SST readers
-	for _, tier := range e.tiers {
-		for _, reader := range tier {
-			_ = reader.Close()
+		// Close opened SST readers
+		for _, tier := range e.tiers {
+			for _, reader := range tier {
+				_ = reader.Close()
+			}
 		}
-	}
-	e.mu.Unlock()
 
-	// Close the WAL
-	if e.wal != nil {
-		if err := e.wal.Close(); err != nil {
-			return fmt.Errorf("failed to close WAL: %w", err)
+		// Close the WAL
+		if e.wal != nil {
+			if err := e.wal.Close(); err != nil {
+				finalErr = fmt.Errorf("failed to close WAL: %w", err)
+			}
 		}
-	}
 
-	// Wait for all background flush/compaction operations to finish
-	e.wg.Wait()
+		// Wait for all background flush/compaction operations to finish
+		e.wg.Wait()
+	})
 
-	return nil
+	return finalErr
 }
 
 // WaitForFlush waits for all flushed to be done (for tests)

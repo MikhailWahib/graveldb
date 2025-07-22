@@ -67,11 +67,6 @@ func (cm *CompactionManager) compact(tier int) error {
 
 	merger := sstable.NewMerger()
 
-	// Double-check if compaction is still needed
-	if !cm.shouldCompactTier(tier) {
-		return nil
-	}
-
 	inputs := cm.engine.tiers[tier]
 	if len(inputs) == 0 {
 		return nil
@@ -119,14 +114,14 @@ func (cm *CompactionManager) compact(tier int) error {
 		return err
 	}
 
-	// Update tiers structure
-	cm.engine.tiers[tier] = []*sstable.Reader{}
-
 	// Open the output file as a reader for the next tier
 	outputReader, err := sstable.NewReader(outputFile)
 	if err != nil {
 		return fmt.Errorf("failed to open compacted SST for reading: %w", err)
 	}
+
+	// Update tiers structure
+	cm.engine.tiers[tier] = []*sstable.Reader{}
 	cm.engine.tiers[tier+1] = append(cm.engine.tiers[tier+1], outputReader)
 
 	return nil
