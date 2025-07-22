@@ -90,11 +90,11 @@ Below are the available fields in `graveldb.Config` and their roles:
   The number of entries between index points in each SSTable.  
   _Lower values make lookups faster but increase index size._
 
-- **FlushThreshold** (`int`, default: `64 * 1024`):  
+- **WALFlushThreshold** (`int`, default: `64 * 1024`):  
   The number of bytes written to the Write-Ahead Log (WAL) before it is flushed to disk.  
   _Higher values can improve write performance but increase the risk of data loss on crash._
 
-- **FlushInterval** (`time.Duration`, default: `10ms`):  
+- **WALFlushInterval** (`time.Duration`, default: `10ms`):  
   The maximum time between WAL flushes, even if the threshold is not reached.  
   _Lower values improve durability but may reduce throughput._
 
@@ -111,8 +111,8 @@ cfg := graveldb.DefaultConfig()
 cfg.MaxMemtableSize = 8 * 1024 * 1024 // 8MB memtable flush threshold
 cfg.MaxTablesPerTier = 8              // Compaction threshold per tier
 cfg.IndexInterval = 32                // Sparse index interval for SSTables
-cfg.FlushThreshold = 128 * 1024       // WAL flush threshold (bytes)
-cfg.FlushInterval = 20 * time.Millisecond // WAL flush interval
+cfg.WALFlushThreshold = 128 * 1024       // WAL flush threshold (bytes)
+cfg.WALFlushInterval = 20 * time.Millisecond // WAL flush interval
 
 db, err := graveldb.Open("/tmp/db", cfg)
 ```
@@ -140,8 +140,8 @@ db, err := graveldb.Open("/tmp/db", cfg)
 | MaxMemtableSize  | int           | `4 * 1024 * 1024` | Memtable flush threshold (bytes)      |
 | MaxTablesPerTier | int           | `4`               | SSTable compaction threshold per tier |
 | IndexInterval    | int           | `16`              | Sparse index interval for SSTables    |
-| FlushThreshold   | int           | `64 * 1024`       | WAL flush threshold (bytes)           |
-| FlushInterval    | time.Duration | `10ms`            | WAL flush interval                    |
+| WALFlushThreshold   | int           | `64 * 1024`       | WAL flush threshold (bytes)           |
+| WALFlushInterval    | time.Duration | `10ms`            | WAL flush interval                    |
 
 ---
 

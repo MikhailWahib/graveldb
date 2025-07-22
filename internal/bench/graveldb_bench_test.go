@@ -6,15 +6,28 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/MikhailWahib/graveldb"
-	"github.com/MikhailWahib/graveldb/internal/config"
 )
 
-func setupBenchDB(b *testing.B) (*graveldb.DB, func()) {
-	tmpDir := filepath.Join(os.TempDir(), fmt.Sprintf("graveldb_bench_%d", rand.Int63()))
+var writeCfg = &graveldb.Config{
+	MaxMemtableSize:   32 * 1024 * 1024,
+	MaxTablesPerTier:  6,
+	IndexInterval:     32,
+	WALFlushThreshold: 256 * 1024,
+	WALFlushInterval:  50 * time.Millisecond,
+}
 
-	db, err := graveldb.Open(tmpDir, config.DefaultConfig())
+var readCfg = &graveldb.Config{
+	MaxMemtableSize:  64 * 1024 * 1024,
+	MaxTablesPerTier: 4,
+	IndexInterval:    64,
+}
+
+func setupBenchDB(b *testing.B, cfg *graveldb.Config) (*graveldb.DB, func()) {
+	tmpDir := filepath.Join(os.TempDir(), fmt.Sprintf("graveldb_bench_%d", rand.Int63()))
+	db, err := graveldb.Open(tmpDir, cfg)
 	if err != nil {
 		b.Fatalf("Failed to open database: %v", err)
 	}
@@ -40,12 +53,14 @@ func generateValue(size int) []byte {
 }
 
 func BenchmarkWrite(b *testing.B) {
-	db, cleanup := setupBenchDB(b)
+	db, cleanup := setupBenchDB(b, writeCfg)
 	defer cleanup()
 
 	value := generateValue(1024)
 
-	for i := 0; b.Loop(); i++ {
+	b.ResetTimer()
+
+	for i := 0; i < b.N; i++ {
 		key := generateKey(i)
 		err := db.Put(key, value)
 		if err != nil {
@@ -55,66 +70,70 @@ func BenchmarkWrite(b *testing.B) {
 }
 
 func BenchmarkRead(b *testing.B) {
-	db, cleanup := setupBenchDB(b)
+	db, cleanup := setupBenchDB(b, readCfg)
 	defer cleanup()
 
 	// Pre-populate
 	value := generateValue(1024)
 	numKeys := 10000
-	for i := range numKeys {
+	for i := 0; i < numKeys; i++ {
 		key := generateKey(i)
-		_ = db.Put(key, value)
+		err := db.Put(key, value)
+		if err != nil {
+			b.Fatalf("Pre-populate put failed: %v", err)
+		}
 	}
 
-	for i := 0; b.Loop(); i++ {
+	b.ResetTimer()
+
+	for i := 0; i < b.N; i++ {
 		key := generateKey(i % numKeys)
-		db.Get(key)
+		_, found := db.Get(key)
+		if !found {
+			b.Fatalf("key not found")
+		}
 	}
 }
 
 func BenchmarkRandomRead(b *testing.B) {
-	db, cleanup := setupBenchDB(b)
+	db, cleanup := setupBenchDB(b, readCfg)
 	defer cleanup()
 
 	// Pre-populate
 	value := generateValue(1024)
 	numKeys := 10000
-	for i := range numKeys {
+	for i := 0; i < numKeys; i++ {
 		key := generateKey(i)
-		_ = db.Put(key, value)
-	}
-
-	for b.Loop() {
-		key := generateKey(rand.Intn(numKeys))
-		db.Get(key)
-	}
-}
-
-func BenchmarkRandomWrite(b *testing.B) {
-	db, cleanup := setupBenchDB(b)
-	defer cleanup()
-
-	value := generateValue(1024)
-
-	for b.Loop() {
-		key := fmt.Appendf(nil, "key_%d", rand.Int())
 		err := db.Put(key, value)
 		if err != nil {
-			b.Fatalf("Put failed: %v", err)
+			b.Fatalf("Pre-populate put failed: %v", err)
+		}
+	}
+
+	b.ResetTimer()
+
+	for i := 0; i < b.N; i++ {
+		key := generateKey(rand.Intn(numKeys))
+		_, found := db.Get(key)
+		if !found {
+			b.Fatalf("key not found")
 		}
 	}
 }
 
 func BenchmarkConcurrentRead(b *testing.B) {
-	db, cleanup := setupBenchDB(b)
+	db, cleanup := setupBenchDB(b, readCfg)
 	defer cleanup()
 
 	// Pre-populate
 	value := generateValue(1024)
 	numKeys := 10000
-	for i := range numKeys {
+	for i := 0; i < numKeys; i++ {
 		key := generateKey(i)
-		_ = db.Put(key, value)
+		err := db.Put(key, value)
+		if err != nil {
+			b.Fatalf("Pre-populate put failed: %v", err)
+		}
 	}
 
 	b.ResetTimer()
@@ -122,22 +141,27 @@ func BenchmarkConcurrentRead(b *testing.B) {
 	b.RunParallel(func(pb *testing.PB) {
 		for pb.Next() {
 			key := generateKey(rand.Intn(numKeys))
-			db.Get(key)
+			_, found := db.Get(key)
+			if !found {
+				b.Fatalf("key not found")
+			}
 		}
 	})
 }
 
 func BenchmarkConcurrentWrite(b *testing.B) {
-	db, cleanup := setupBenchDB(b)
+	db, cleanup := setupBenchDB(b, writeCfg)
 	defer cleanup()
 
 	value := generateValue(1024)
+
 	b.ResetTimer()
 
 	b.RunParallel(func(pb *testing.PB) {
 		i := 0
 		for pb.Next() {
-			key := fmt.Appendf(nil, "key_%d_%d", b.N, i)
+			// Use unique keys to avoid collisions across goroutines
+			key := fmt.Appendf(nil, "key_%d_%d", rand.Int63(), i)
 			err := db.Put(key, value)
 			if err != nil {
 				b.Fatalf("Put failed: %v", err)

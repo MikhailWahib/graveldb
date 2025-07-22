@@ -40,12 +40,12 @@ func NewWAL(path string, config *config.Config) (*WAL, error) {
 	wal := &WAL{
 		path:        path,
 		file:        file,
-		writer:      bufio.NewWriterSize(file, config.FlushThreshold),
+		writer:      bufio.NewWriterSize(file, config.WALFlushThreshold),
 		flushNotify: make(chan struct{}, 1),
 		closeChan:   make(chan struct{}),
 		config:      config,
 	}
-	wal.flushTimer = time.AfterFunc(config.FlushInterval, wal.asyncFlush)
+	wal.flushTimer = time.AfterFunc(config.WALFlushInterval, wal.asyncFlush)
 	go wal.backgroundFlusher()
 	return wal, nil
 }
@@ -64,7 +64,7 @@ func (w *WAL) writeEntry(e record.Entry) error {
 		return err
 	}
 
-	if w.writer.Buffered() >= w.config.FlushThreshold {
+	if w.writer.Buffered() >= w.config.WALFlushThreshold {
 		w.signalFlush()
 	}
 	return nil
@@ -122,7 +122,7 @@ func (w *WAL) resetTimer() {
 			default:
 			}
 		}
-		w.flushTimer.Reset(w.config.FlushInterval)
+		w.flushTimer.Reset(w.config.WALFlushInterval)
 	}
 }
 

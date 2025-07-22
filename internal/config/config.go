@@ -6,30 +6,30 @@ import (
 )
 
 const (
-	defaultMaxMemtableSize  = 4 * 1024 * 1024
-	defaultMaxTablesPerTier = 4
-	defaultIndexInterval    = 16
-	defaultFlushThreshold   = 64 * 1024
-	defaultFlushInterval    = 10 * time.Millisecond
+	defaultMaxMemtableSize   = 32 * 1024 * 1024
+	defaultMaxTablesPerTier  = 4
+	defaultIndexInterval     = 16
+	defaultWALFlushThreshold = 64 * 1024
+	defaultWALFlushInterval  = 10 * time.Millisecond
 )
 
 // Config holds all tunable parameters for GravelDB's performance and durability.
 type Config struct {
-	MaxMemtableSize  int
-	MaxTablesPerTier int
-	IndexInterval    int
-	FlushThreshold   int
-	FlushInterval    time.Duration
+	MaxMemtableSize   int
+	MaxTablesPerTier  int
+	IndexInterval     int
+	WALFlushThreshold int
+	WALFlushInterval  time.Duration
 }
 
 // DefaultConfig returns a Config struct populated with default values.
 func DefaultConfig() *Config {
 	return &Config{
-		MaxMemtableSize:  defaultMaxMemtableSize,
-		MaxTablesPerTier: defaultMaxTablesPerTier,
-		IndexInterval:    defaultIndexInterval,
-		FlushThreshold:   defaultFlushThreshold,
-		FlushInterval:    defaultFlushInterval,
+		MaxMemtableSize:   defaultMaxMemtableSize,
+		MaxTablesPerTier:  defaultMaxTablesPerTier,
+		IndexInterval:     defaultIndexInterval,
+		WALFlushThreshold: defaultWALFlushThreshold,
+		WALFlushInterval:  defaultWALFlushInterval,
 	}
 }
 
@@ -45,10 +45,10 @@ func (c *Config) FillDefaults() {
 	if c.IndexInterval == 0 {
 		c.IndexInterval = def.IndexInterval
 	}
-	if c.FlushThreshold == 0 {
-		c.FlushThreshold = def.FlushThreshold
+	if c.WALFlushThreshold == 0 {
+		c.WALFlushThreshold = def.WALFlushThreshold
 	}
-	if c.FlushInterval == 0 {
-		c.FlushInterval = def.FlushInterval
+	if c.WALFlushInterval == 0 {
+		c.WALFlushInterval = def.WALFlushInterval
 	}
 }
