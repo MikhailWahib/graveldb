@@ -162,7 +162,7 @@ make test   # or: go test -race ./...
 - `internal/memtable/` – in-memory skiplist
 - `internal/sstable/` – disk-based SSTables
 - `internal/wal/` – write-ahead log
-- `internal/record/` – binary encoding
+- `internal/storage/` – binary encoding
 - `Makefile` – build/test commands
 
 ### Testing

@@ -1,5 +1,4 @@
-// Package record provides common types and utilities used across the database implementation.
-package record
+package storage
 
 // EntryTypeSize is the size in bytes used to store an entry type marker
 const EntryTypeSize = 1

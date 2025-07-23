@@ -4,7 +4,7 @@ import (
 	"testing"
 
 	"github.com/MikhailWahib/graveldb/internal/memtable"
-	"github.com/MikhailWahib/graveldb/internal/record"
+	"github.com/MikhailWahib/graveldb/internal/storage"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -31,7 +31,7 @@ func TestMemtable_Delete(t *testing.T) {
 
 	entry, ok := mt.Get([]byte("key1"))
 	assert.True(t, ok, "expected key1 to exist after deletion")
-	assert.Equal(t, record.DeleteEntry, entry.Type, "expected type to be DeleteEntry after delete")
+	assert.Equal(t, storage.DeleteEntry, entry.Type, "expected type to be DeleteEntry after delete")
 	assert.Nil(t, entry.Value, "expected value to be nil after delete")
 }
 

@@ -8,7 +8,7 @@ import (
 	"os"
 
 	"github.com/MikhailWahib/graveldb/internal/config"
-	"github.com/MikhailWahib/graveldb/internal/record"
+	"github.com/MikhailWahib/graveldb/internal/storage"
 )
 
 // Writer provides functionality to write to an SSTable
@@ -43,8 +43,8 @@ func (w *Writer) PutEntry(key, value []byte) error {
 	if w.finished {
 		return fmt.Errorf("cannot write to finished SSTable")
 	}
-	return w.writeEntry(record.Entry{
-		Type:  record.PutEntry,
+	return w.writeEntry(storage.Entry{
+		Type:  storage.PutEntry,
 		Key:   key,
 		Value: value,
 	})
@@ -55,19 +55,19 @@ func (w *Writer) DeleteEntry(key []byte) error {
 	if w.finished {
 		return fmt.Errorf("cannot write to finished SSTable")
 	}
-	return w.writeEntry(record.Entry{
-		Type:  record.DeleteEntry,
+	return w.writeEntry(storage.Entry{
+		Type:  storage.DeleteEntry,
 		Key:   key,
 		Value: nil,
 	})
 }
 
 // writeEntry writes a key-value pair to the data section
-func (w *Writer) writeEntry(entry record.Entry) error {
+func (w *Writer) writeEntry(entry storage.Entry) error {
 	entryOffset := w.offset
 
 	// Write the entry prefixed with type byte and k,v
-	n, err := record.WriteEntryAt(entry, w.file, w.offset)
+	n, err := storage.WriteEntryAt(entry, w.file, w.offset)
 	if err != nil {
 		return err
 	}
@@ -86,12 +86,12 @@ func (w *Writer) writeIndex() error {
 
 	for _, entry := range w.index {
 		// Write key with prefix using IndexEntry type
-		e := record.Entry{
-			Type:  record.IndexEntry,
+		e := storage.Entry{
+			Type:  storage.IndexEntry,
 			Key:   entry.Key,
 			Value: nil,
 		}
-		newOffset, err := record.WriteEntryAt(e, w.file, w.offset)
+		newOffset, err := storage.WriteEntryAt(e, w.file, w.offset)
 		if err != nil {
 			return err
 		}

@@ -3,14 +3,14 @@
 package memtable
 
 import (
-	"github.com/MikhailWahib/graveldb/internal/record"
+	"github.com/MikhailWahib/graveldb/internal/storage"
 )
 
 // Memtable defines the interface for an in-memory table that supports basic operations
 type Memtable interface {
-	Entries() []record.Entry
+	Entries() []storage.Entry
 	Put(key, value []byte) error
-	Get(key []byte) (record.Entry, bool)
+	Get(key []byte) (storage.Entry, bool)
 	Delete(key []byte) error
 	Size() int
 	Clear()
@@ -30,19 +30,19 @@ func NewMemtable() Memtable {
 }
 
 // Entries returns all entries in the memtable memtable.
-func (m *SkiplistMemtable) Entries() []record.Entry {
+func (m *SkiplistMemtable) Entries() []storage.Entry {
 	return m.sl.Entries()
 }
 
 // Put inserts or updates an entry in the memtable
 func (m *SkiplistMemtable) Put(key, value []byte) error {
 
-	m.sl.Put(record.Entry{Type: record.PutEntry, Key: key, Value: value})
+	m.sl.Put(storage.Entry{Type: storage.PutEntry, Key: key, Value: value})
 	return nil
 }
 
 // Get retrieves an entry from the memtable by key
-func (m *SkiplistMemtable) Get(key []byte) (record.Entry, bool) {
+func (m *SkiplistMemtable) Get(key []byte) (storage.Entry, bool) {
 	return m.sl.Get(key)
 }
 

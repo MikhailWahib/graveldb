@@ -5,7 +5,7 @@ import (
 	"math/rand"
 	"time"
 
-	"github.com/MikhailWahib/graveldb/internal/record"
+	"github.com/MikhailWahib/graveldb/internal/storage"
 )
 
 const (
@@ -16,7 +16,7 @@ const (
 // SkipListNode represents a node in the skip list data structure
 type SkipListNode struct {
 	key   []byte
-	entry record.Entry
+	entry storage.Entry
 	next  []*SkipListNode
 }
 
@@ -32,7 +32,7 @@ type SkipList struct {
 
 // NewSkipListNode creates a new SkipListNode with the given key, value, and level.
 // It initializes the 'next' slice to the correct length for the node's level.
-func NewSkipListNode(key []byte, entry record.Entry, level int) *SkipListNode {
+func NewSkipListNode(key []byte, entry storage.Entry, level int) *SkipListNode {
 	return &SkipListNode{
 		key:   key,
 		entry: entry,
@@ -44,7 +44,7 @@ func NewSkipListNode(key []byte, entry record.Entry, level int) *SkipListNode {
 // The list is seeded with a pseudo-random generator and a head node with maxLevel pointers.
 func NewSkipList() *SkipList {
 	return &SkipList{
-		head:     NewSkipListNode([]byte{}, record.Entry{}, maxLevel),
+		head:     NewSkipListNode([]byte{}, storage.Entry{}, maxLevel),
 		level:    1,
 		maxLevel: maxLevel,
 		size:     0,
@@ -53,12 +53,12 @@ func NewSkipList() *SkipList {
 }
 
 // Entries return all entries in the skiplist
-func (sl *SkipList) Entries() []record.Entry {
-	var result []record.Entry
+func (sl *SkipList) Entries() []storage.Entry {
+	var result []storage.Entry
 	current := sl.head.next[0]
 
 	for current != nil {
-		result = append(result, record.Entry{
+		result = append(result, storage.Entry{
 			Key:   current.key,
 			Value: current.entry.Value,
 		})
@@ -78,7 +78,7 @@ func (sl *SkipList) randomLevel() int {
 }
 
 // Put inserts a new key-value pair into the SkipList or updates the value if the key already exists.
-func (sl *SkipList) Put(entry record.Entry) {
+func (sl *SkipList) Put(entry storage.Entry) {
 	key := entry.Key
 	update := make([]*SkipListNode, sl.maxLevel)
 	current := sl.head
@@ -119,7 +119,7 @@ func (sl *SkipList) Put(entry record.Entry) {
 
 // Get retrieves the value associated with a given key.
 // Returns the value and true if found, otherwise returns nil and false.
-func (sl *SkipList) Get(key []byte) (record.Entry, bool) {
+func (sl *SkipList) Get(key []byte) (storage.Entry, bool) {
 	current := sl.head
 
 	// Start from the highest level and work down
@@ -134,7 +134,7 @@ func (sl *SkipList) Get(key []byte) (record.Entry, bool) {
 	if current != nil && bytes.Equal(current.key, key) {
 		return current.entry, true
 	}
-	return record.Entry{}, false
+	return storage.Entry{}, false
 }
 
 // Delete marks a key as deleted in the skiplist.
@@ -142,11 +142,11 @@ func (sl *SkipList) Delete(key []byte) error {
 	entry, _ := sl.Get(key)
 
 	// Ignore the case where the key is already deleted
-	if entry.Type == record.DeleteEntry {
+	if entry.Type == storage.DeleteEntry {
 		return nil
 	}
 
-	sl.Put(record.Entry{Type: record.DeleteEntry, Key: key, Value: nil})
+	sl.Put(storage.Entry{Type: storage.DeleteEntry, Key: key, Value: nil})
 
 	sl.size -= len(entry.Value)
 	return nil

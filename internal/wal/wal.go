@@ -10,7 +10,7 @@ import (
 	"time"
 
 	"github.com/MikhailWahib/graveldb/internal/config"
-	"github.com/MikhailWahib/graveldb/internal/record"
+	"github.com/MikhailWahib/graveldb/internal/storage"
 )
 
 // WAL manages the write-ahead log file
@@ -50,7 +50,7 @@ func NewWAL(path string, config *config.Config) (*WAL, error) {
 }
 
 // writeEntry serializes and writes an entry to the buffer
-func (w *WAL) writeEntry(e record.Entry) error {
+func (w *WAL) writeEntry(e storage.Entry) error {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 
@@ -58,7 +58,7 @@ func (w *WAL) writeEntry(e record.Entry) error {
 		return errors.New("WAL is closed")
 	}
 
-	data := record.SerializeEntry(e)
+	data := storage.SerializeEntry(e)
 	if _, err := w.writer.Write(data); err != nil {
 		return err
 	}
@@ -71,8 +71,8 @@ func (w *WAL) writeEntry(e record.Entry) error {
 
 // AppendPut appends a put operation to the WAL
 func (w *WAL) AppendPut(key, value []byte) error {
-	return w.writeEntry(record.Entry{
-		Type:  record.PutEntry,
+	return w.writeEntry(storage.Entry{
+		Type:  storage.PutEntry,
 		Key:   key,
 		Value: value,
 	})
@@ -80,8 +80,8 @@ func (w *WAL) AppendPut(key, value []byte) error {
 
 // AppendDelete appends a delete operation to the WAL
 func (w *WAL) AppendDelete(key []byte) error {
-	return w.writeEntry(record.Entry{
-		Type:  record.DeleteEntry,
+	return w.writeEntry(storage.Entry{
+		Type:  storage.DeleteEntry,
 		Key:   key,
 		Value: []byte{},
 	})
@@ -152,7 +152,7 @@ func (w *WAL) flushBuffer() {
 }
 
 // Replay reads entries from the beginning of the WAL file
-func (w *WAL) Replay() ([]record.Entry, error) {
+func (w *WAL) Replay() ([]storage.Entry, error) {
 	readFile, err := os.Open(w.path)
 	if err != nil {
 		return nil, err
@@ -162,9 +162,9 @@ func (w *WAL) Replay() ([]record.Entry, error) {
 	}()
 
 	reader := bufio.NewReader(readFile)
-	var entries []record.Entry
+	var entries []storage.Entry
 	for {
-		entry, err := record.ReadEntryFromReader(reader)
+		entry, err := storage.ReadEntryFromReader(reader)
 		if err != nil {
 			if errors.Is(err, io.EOF) {
 				break
