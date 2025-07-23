@@ -1,3 +1,5 @@
+// Package storage provides low-level storage operations for GravelDB,
+// including entry serialization, file I/O, and binary encoding utilities.
 package storage
 
 import (
