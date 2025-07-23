@@ -78,7 +78,7 @@ You can tune GravelDB's performance by customizing the `graveldb.Config` struct.
 
 Below are the available fields in `graveldb.Config` and their roles:
 
-- **MaxMemtableSize** (`int`, default: `4 * 1024 * 1024`):  
+- **MaxMemtableSize** (`int`, default: `32 * 1024 * 1024`):  
   The maximum size (in bytes) of the in-memory memtable before it is flushed to disk as an SSTable.  
   _Higher values improve write throughput but use more memory._
 
@@ -137,7 +137,7 @@ db, err := graveldb.Open("/tmp/db", cfg)
 
 | Field            | Type          | Default           | Description                           |
 | ---------------- | ------------- | ----------------- | ------------------------------------- |
-| MaxMemtableSize  | int           | `4 * 1024 * 1024` | Memtable flush threshold (bytes)      |
+| MaxMemtableSize  | int           | `32 * 1024 * 1024` | Memtable flush threshold (bytes)      |
 | MaxTablesPerTier | int           | `4`               | SSTable compaction threshold per tier |
 | IndexInterval    | int           | `16`              | Sparse index interval for SSTables    |
 | WALFlushThreshold   | int           | `64 * 1024`       | WAL flush threshold (bytes)           |
