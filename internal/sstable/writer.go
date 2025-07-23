@@ -38,13 +38,13 @@ func NewWriter(path string, config *config.Config) (*Writer, error) {
 	}, nil
 }
 
-// PutEntry writes a key-value pair to the SSTable
-func (w *Writer) PutEntry(key, value []byte) error {
+// WriteEntry writes a key-value pair to the SSTable
+func (w *Writer) WriteEntry(key, value []byte) error {
 	if w.finished {
 		return fmt.Errorf("cannot write to finished SSTable")
 	}
 	return w.writeEntry(storage.Entry{
-		Type:  storage.PutEntry,
+		Type:  storage.SetEntry,
 		Key:   key,
 		Value: value,
 	})

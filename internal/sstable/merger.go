@@ -116,7 +116,7 @@ func (m *Merger) Merge() error {
 				return err
 			}
 		} else {
-			if err := m.output.PutEntry(item.key, item.value); err != nil {
+			if err := m.output.WriteEntry(item.key, item.value); err != nil {
 				return err
 			}
 		}

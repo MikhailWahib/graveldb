@@ -71,8 +71,8 @@ func (e *Engine) OpenDB(dataDir string) error {
 
 	for _, entry := range entries {
 		switch entry.Type {
-		case storage.PutEntry:
-			if err := e.memtable.Put(entry.Key, entry.Value); err != nil {
+		case storage.SetEntry:
+			if err := e.memtable.Set(entry.Key, entry.Value); err != nil {
 				return err
 			}
 		case storage.DeleteEntry:
@@ -159,16 +159,16 @@ func (e *Engine) Tiers() [][]*sstable.Reader {
 	return e.tiers
 }
 
-// Put inserts or updates a key-value pair in the database.
-func (e *Engine) Put(key, value []byte) error {
+// Set inserts or updates a key-value pair in the database.
+func (e *Engine) Set(key, value []byte) error {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 
-	if err := e.wal.AppendPut(key, value); err != nil {
+	if err := e.wal.AppendSet(key, value); err != nil {
 		return err
 	}
 
-	if err := e.memtable.Put(key, value); err != nil {
+	if err := e.memtable.Set(key, value); err != nil {
 		return err
 	}
 
@@ -252,7 +252,7 @@ func (e *Engine) flushMemtable(mt memtable.Memtable) error {
 	}
 
 	for _, entry := range entries {
-		if err := writer.PutEntry(entry.Key, entry.Value); err != nil {
+		if err := writer.WriteEntry(entry.Key, entry.Value); err != nil {
 			return fmt.Errorf("failed to put entry to SSTable: %w", err)
 		}
 	}

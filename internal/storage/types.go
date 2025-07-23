@@ -4,8 +4,8 @@ package storage
 type EntryType byte
 
 const (
-	// PutEntry indicates a key-value insertion operation
-	PutEntry EntryType = iota
+	// SetEntry indicates a key-value insertion operation
+	SetEntry EntryType = iota
 	// DeleteEntry indicates a key deletion operation
 	DeleteEntry
 	// IndexEntry indicates an index record in the SSTable

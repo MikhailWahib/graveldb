@@ -77,8 +77,8 @@ func (sl *SkipList) randomLevel() int {
 	return level
 }
 
-// Put inserts a new key-value pair into the SkipList or updates the value if the key already exists.
-func (sl *SkipList) Put(entry storage.Entry) {
+// Set inserts a new key-value pair into the SkipList or updates the value if the key already exists.
+func (sl *SkipList) Set(entry storage.Entry) {
 	key := entry.Key
 	update := make([]*SkipListNode, sl.maxLevel)
 	current := sl.head
@@ -146,7 +146,7 @@ func (sl *SkipList) Delete(key []byte) error {
 		return nil
 	}
 
-	sl.Put(storage.Entry{Type: storage.DeleteEntry, Key: key, Value: nil})
+	sl.Set(storage.Entry{Type: storage.DeleteEntry, Key: key, Value: nil})
 
 	sl.size -= len(entry.Value)
 	return nil
