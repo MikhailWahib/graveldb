@@ -9,7 +9,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/MikhailWahib/graveldb/internal/config"
 	"github.com/MikhailWahib/graveldb/internal/storage"
 )
 
@@ -26,25 +25,27 @@ type WAL struct {
 	closeChan   chan struct{}
 	closed      bool
 
-	config *config.Config
+	flushThreshold int
+	flushInterval  time.Duration
 }
 
 // NewWAL creates a new WAL
-func NewWAL(path string, config *config.Config) (*WAL, error) {
+func NewWAL(path string, flushThreshold int, flushInterval time.Duration) (*WAL, error) {
 	file, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
 	if err != nil {
 		return nil, err
 	}
 
 	wal := &WAL{
-		path:        path,
-		file:        file,
-		writer:      bufio.NewWriterSize(file, config.WALFlushThreshold),
-		flushNotify: make(chan struct{}, 1),
-		closeChan:   make(chan struct{}),
-		config:      config,
+		path:           path,
+		file:           file,
+		writer:         bufio.NewWriterSize(file, flushThreshold),
+		flushNotify:    make(chan struct{}, 1),
+		closeChan:      make(chan struct{}),
+		flushThreshold: flushThreshold,
+		flushInterval:  flushInterval,
 	}
-	wal.flushTimer = time.AfterFunc(config.WALFlushInterval, wal.asyncFlush)
+	wal.flushTimer = time.AfterFunc(flushInterval, wal.asyncFlush)
 	go wal.backgroundFlusher()
 	return wal, nil
 }
@@ -63,7 +64,7 @@ func (w *WAL) writeEntry(e storage.Entry) error {
 		return err
 	}
 
-	if w.writer.Buffered() >= w.config.WALFlushThreshold {
+	if w.writer.Buffered() >= w.flushThreshold {
 		w.signalFlush()
 	}
 	return nil
@@ -121,7 +122,7 @@ func (w *WAL) resetTimer() {
 			default:
 			}
 		}
-		w.flushTimer.Reset(w.config.WALFlushInterval)
+		w.flushTimer.Reset(w.flushInterval)
 	}
 }
 

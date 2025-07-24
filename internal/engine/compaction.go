@@ -90,7 +90,7 @@ func (cm *CompactionManager) compact(tier int) error {
 		}
 	}
 
-	output, err := sstable.NewWriter(outputFile, cm.engine.config)
+	output, err := sstable.NewWriter(outputFile, cm.engine.config.IndexInterval)
 	if err != nil {
 		// Clean up opened input SSTables
 		for _, sst := range inputs {

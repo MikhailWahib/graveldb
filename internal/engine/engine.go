@@ -59,7 +59,7 @@ func (e *Engine) OpenDB(dataDir string) error {
 	}
 	e.dataDir = dataDir
 
-	wal, err := wal.NewWAL(dataDir+"/wal.log", e.config)
+	wal, err := wal.NewWAL(dataDir+"/wal.log", e.config.WALFlushThreshold, e.config.WALFlushInterval)
 	if err != nil {
 		return err
 	}
@@ -246,7 +246,7 @@ func (e *Engine) flushMemtable(mt memtable.Memtable) error {
 
 	filename := fmt.Sprintf("%s/%06d.sst", l0Dir, e.sstCounter.Add(1))
 
-	writer, err := sstable.NewWriter(filename, e.config)
+	writer, err := sstable.NewWriter(filename, e.config.IndexInterval)
 	if err != nil {
 		return err
 	}
