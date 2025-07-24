@@ -51,7 +51,9 @@ func TestEngine_WALReplay(t *testing.T) {
 
 	func() {
 		// Create engine and write entries
-		e := engine.NewEngine(nil)
+		// Set WALFlushThreshold to log immediately
+		cfg := &config.Config{WALFlushThreshold: 1}
+		e := engine.NewEngine(cfg)
 		err := e.OpenDB(tmpDir)
 		require.NoError(t, err)
 
@@ -60,9 +62,6 @@ func TestEngine_WALReplay(t *testing.T) {
 		err = e.Set([]byte("b"), []byte("2"))
 		require.NoError(t, err)
 		err = e.Delete([]byte("a"))
-		require.NoError(t, err)
-
-		err = e.Close()
 		require.NoError(t, err)
 	}()
 
@@ -431,7 +430,9 @@ func TestEngine_WALReplay_MixedTombstones(t *testing.T) {
 	tmpDir := t.TempDir()
 
 	func() {
-		e := engine.NewEngine(nil)
+		// Set WALFlushThreshold to log immediately
+		cfg := &config.Config{WALFlushThreshold: 1}
+		e := engine.NewEngine(cfg)
 		require.NoError(t, e.OpenDB(tmpDir))
 
 		require.NoError(t, e.Set([]byte("a"), []byte("1")))
@@ -439,7 +440,6 @@ func TestEngine_WALReplay_MixedTombstones(t *testing.T) {
 		require.NoError(t, e.Delete([]byte("a")))
 		require.NoError(t, e.Set([]byte("c"), []byte("3")))
 		require.NoError(t, e.Delete([]byte("b")))
-		require.NoError(t, e.Close())
 	}()
 
 	// Simulate restart
