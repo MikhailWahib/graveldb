@@ -62,7 +62,7 @@ func (r *Reader) loadIndex() error {
 	indexSize := int64(binary.BigEndian.Uint64(footer[IndexOffsetSize:]))
 	r.indexBase = indexOffset
 
-	// Read index section into memory buffer (single read)
+	// Read index section into memory buffer
 	indexBuf := make([]byte, indexSize)
 	if _, err := io.ReadFull(io.NewSectionReader(r.file, indexOffset, indexSize), indexBuf); err != nil {
 		return fmt.Errorf("failed to read index section: %w", err)

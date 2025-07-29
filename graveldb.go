@@ -7,7 +7,7 @@
 //
 // Example usage:
 //
-//	db, err := graveldb.Open("/path/to/database")
+//	db, err := graveldb.Open("/path/to/database", graveldb.DefaultConfig())
 //	if err != nil {
 //		log.Fatal(err)
 //	}
