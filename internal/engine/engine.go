@@ -155,15 +155,12 @@ func (e *Engine) parseTiers() error {
 func (e *Engine) Tiers() [][]*sstable.Reader {
 	e.mu.RLock()
 	defer e.mu.RUnlock()
-
 	return e.tiers
 }
 
 // Set inserts or updates a key-value pair in the database.
 func (e *Engine) Set(key, value []byte) error {
 	e.mu.Lock()
-	defer e.mu.Unlock()
-
 	if err := e.wal.AppendSet(key, value); err != nil {
 		return err
 	}
@@ -172,18 +169,21 @@ func (e *Engine) Set(key, value []byte) error {
 		return err
 	}
 
-	if e.memtable.Size() > e.maxMemtableSize {
+	reachedMemtableThreshold := e.memtable.Size() > e.maxMemtableSize
+
+	if reachedMemtableThreshold {
 		old := e.memtable
 		e.memtable = memtable.NewMemtable()
 		e.wg.Add(1)
+		e.mu.Unlock()
 		go func() {
 			defer e.wg.Done()
-			e.mu.Lock()
 			if err := e.flushMemtable(old); err != nil {
 				log.Printf("flushMemtable error: %v", err)
 			}
-			e.mu.Unlock()
 		}()
+	} else {
+		e.mu.Unlock()
 	}
 
 	return nil
@@ -267,6 +267,7 @@ func (e *Engine) flushMemtable(mt memtable.Memtable) error {
 		return fmt.Errorf("failed to open SSTable for reading: %w", err)
 	}
 
+	e.mu.Lock()
 	// Ensure tier 0 exists
 	if len(e.tiers) == 0 {
 		e.tiers = append(e.tiers, []*sstable.Reader{})
@@ -276,6 +277,7 @@ func (e *Engine) flushMemtable(mt memtable.Memtable) error {
 	e.tiers[0] = append(e.tiers[0], reader)
 
 	shouldCompact := e.compactionMgr.shouldCompactTier(0)
+	e.mu.Unlock()
 
 	// Run compaction on T0 if needed
 	if shouldCompact {

@@ -61,13 +61,12 @@ func (cm *CompactionManager) compactTiers(start int) error {
 
 // compact compacts a single tier by merging all SSTables in it.
 func (cm *CompactionManager) compact(tier int) error {
-	// Acquire write lock for the entire compaction operation
-	cm.engine.mu.Lock()
-	defer cm.engine.mu.Unlock()
-
 	merger := sstable.NewMerger()
 
+	cm.engine.mu.RLock()
 	inputs := cm.engine.tiers[tier]
+	cm.engine.mu.RUnlock()
+
 	if len(inputs) == 0 {
 		return nil
 	}
@@ -78,10 +77,12 @@ func (cm *CompactionManager) compact(tier int) error {
 		return fmt.Errorf("failed to generate output path for tier %d", tier+1)
 	}
 
+	cm.engine.mu.Lock()
 	// Ensure tiers slice is long enough
 	for len(cm.engine.tiers) <= tier+1 {
 		cm.engine.tiers = append(cm.engine.tiers, nil)
 	}
+	cm.engine.mu.Unlock()
 
 	// Add sources to merger and open them for reading
 	for _, sst := range inputs {
@@ -121,8 +122,10 @@ func (cm *CompactionManager) compact(tier int) error {
 	}
 
 	// Update tiers structure
+	cm.engine.mu.Lock()
 	cm.engine.tiers[tier] = []*sstable.Reader{}
 	cm.engine.tiers[tier+1] = append(cm.engine.tiers[tier+1], outputReader)
+	cm.engine.mu.Unlock()
 
 	return nil
 }
