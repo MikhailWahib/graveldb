@@ -9,10 +9,10 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestMemtable_SetAndGet(t *testing.T) {
+func TestMemtable_PutAndGet(t *testing.T) {
 	mt := memtable.NewMemtable()
 
-	err := mt.Set([]byte("key1"), []byte("value1"))
+	err := mt.Put([]byte("key1"), []byte("value1"))
 	require.NoError(t, err)
 
 	entry, ok := mt.Get([]byte("key1"))
@@ -23,7 +23,7 @@ func TestMemtable_SetAndGet(t *testing.T) {
 func TestMemtable_Delete(t *testing.T) {
 	mt := memtable.NewMemtable()
 
-	err := mt.Set([]byte("key1"), []byte("value1"))
+	err := mt.Put([]byte("key1"), []byte("value1"))
 	require.NoError(t, err)
 
 	err = mt.Delete([]byte("key1"))
@@ -38,9 +38,9 @@ func TestMemtable_Delete(t *testing.T) {
 func TestMemtable_Size(t *testing.T) {
 	mt := memtable.NewMemtable()
 
-	require.NoError(t, mt.Set([]byte("a"), []byte("1")))
-	require.NoError(t, mt.Set([]byte("b"), []byte("2")))
-	require.NoError(t, mt.Set([]byte("c"), []byte("3")))
+	require.NoError(t, mt.Put([]byte("a"), []byte("1")))
+	require.NoError(t, mt.Put([]byte("b"), []byte("2")))
+	require.NoError(t, mt.Put([]byte("c"), []byte("3")))
 
 	assert.Equal(t, 6, mt.Size(), "expected size 6")
 

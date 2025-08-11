@@ -24,8 +24,8 @@ func TestWAL_BasicOperations(t *testing.T) {
 	w, err := wal.NewWAL(walPath, threshold, interval)
 	require.NoError(t, err)
 
-	require.NoError(t, w.AppendSet([]byte("key1"), []byte("value1")))
-	require.NoError(t, w.AppendSet([]byte("key2"), []byte("value2")))
+	require.NoError(t, w.AppendPut([]byte("key1"), []byte("value1")))
+	require.NoError(t, w.AppendPut([]byte("key2"), []byte("value2")))
 
 	require.NoError(t, w.AppendDelete([]byte("key3")))
 
@@ -53,7 +53,7 @@ func TestWAL_Replay(t *testing.T) {
 
 	for _, e := range expected {
 		if e.op == "put" {
-			require.NoError(t, w.AppendSet(e.key, e.value))
+			require.NoError(t, w.AppendPut(e.key, e.value))
 		} else {
 			require.NoError(t, w.AppendDelete(e.key))
 		}
@@ -73,7 +73,7 @@ func TestWAL_Replay(t *testing.T) {
 
 	for i, entry := range entries {
 		e := expected[i]
-		expectedType := storage.SetEntry
+		expectedType := storage.PutEntry
 		if e.op == "delete" {
 			expectedType = storage.DeleteEntry
 		}
@@ -112,9 +112,9 @@ func TestWAL_LargeEntries(t *testing.T) {
 	largeValue := make([]byte, 4096)
 
 	// Write large entry
-	require.NoError(t, w.AppendSet(largeKey, largeValue))
+	require.NoError(t, w.AppendPut(largeKey, largeValue))
 	// Write normal entry
-	require.NoError(t, w.AppendSet([]byte("small_key"), []byte("small_value")))
+	require.NoError(t, w.AppendPut([]byte("small_key"), []byte("small_value")))
 
 	require.NoError(t, w.Close())
 
@@ -145,14 +145,14 @@ func TestWAL_Reopening(t *testing.T) {
 	w, err := wal.NewWAL(walPath, threshold, interval)
 	require.NoError(t, err)
 
-	require.NoError(t, w.AppendSet([]byte("key1"), []byte("value1")))
+	require.NoError(t, w.AppendPut([]byte("key1"), []byte("value1")))
 	require.NoError(t, w.Close())
 
 	// Reopen and add more entries
 	w, err = wal.NewWAL(walPath, threshold, interval)
 	require.NoError(t, err)
 
-	require.NoError(t, w.AppendSet([]byte("key2"), []byte("value2")))
+	require.NoError(t, w.AppendPut([]byte("key2"), []byte("value2")))
 	require.NoError(t, w.Close())
 
 	// Open and replay

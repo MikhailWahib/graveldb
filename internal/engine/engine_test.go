@@ -14,7 +14,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestEngine_BasicSetGetDelete(t *testing.T) {
+func TestEngine_BasicPutGetDelete(t *testing.T) {
 	tmpDir := t.TempDir()
 
 	// Initialize engine
@@ -23,9 +23,9 @@ func TestEngine_BasicSetGetDelete(t *testing.T) {
 	require.NoError(t, err)
 
 	// Insert some keys
-	err = e.Set([]byte("foo"), []byte("bar"))
+	err = e.Put([]byte("foo"), []byte("bar"))
 	require.NoError(t, err)
-	err = e.Set([]byte("baz"), []byte("qux"))
+	err = e.Put([]byte("baz"), []byte("qux"))
 	require.NoError(t, err)
 
 	// Get keys
@@ -57,9 +57,9 @@ func TestEngine_WALReplay(t *testing.T) {
 		err := e.OpenDB(tmpDir)
 		require.NoError(t, err)
 
-		err = e.Set([]byte("a"), []byte("1"))
+		err = e.Put([]byte("a"), []byte("1"))
 		require.NoError(t, err)
-		err = e.Set([]byte("b"), []byte("2"))
+		err = e.Put([]byte("b"), []byte("2"))
 		require.NoError(t, err)
 		err = e.Delete([]byte("a"))
 		require.NoError(t, err)
@@ -109,7 +109,7 @@ func TestMemtableFlush(t *testing.T) {
 	require.NoError(t, err)
 
 	// Insert one key to trigger flush
-	err = e.Set([]byte("key1"), []byte("value1"))
+	err = e.Put([]byte("key1"), []byte("value1"))
 	require.NoError(t, err)
 
 	e.WaitForFlush()
@@ -137,15 +137,15 @@ func TestEngine_GetFromSSTable(t *testing.T) {
 
 	// Force flush immediately
 
-	// Set key to trigger flush
-	err = e.Set([]byte("flushed_key"), []byte("flushed_value"))
+	// Put key to trigger flush
+	err = e.Put([]byte("flushed_key"), []byte("flushed_value"))
 	require.NoError(t, err)
 
 	// Wait for flush to complete
 	e.WaitForFlush()
 
-	// Set another key in memtable
-	err = e.Set([]byte("memtable_key"), []byte("memtable_value"))
+	// Put another key in memtable
+	err = e.Put([]byte("memtable_key"), []byte("memtable_value"))
 	require.NoError(t, err)
 
 	// Should find both keys
@@ -165,8 +165,8 @@ func TestEngine_GetDeletedFromSSTable(t *testing.T) {
 	err := e.OpenDB(tmpDir)
 	require.NoError(t, err)
 
-	// Set and delete key to trigger flush with tombstone
-	err = e.Set([]byte("deleted_key"), []byte("some_value"))
+	// Put and delete key to trigger flush with tombstone
+	err = e.Put([]byte("deleted_key"), []byte("some_value"))
 	require.NoError(t, err)
 	err = e.Delete([]byte("deleted_key"))
 	require.NoError(t, err)
@@ -198,7 +198,7 @@ func TestEngine_SSTCounterRestoration(t *testing.T) {
 	err = e.OpenDB(tmpDir)
 	require.NoError(t, err)
 
-	err = e.Set([]byte("test_key"), []byte("test_value"))
+	err = e.Put([]byte("test_key"), []byte("test_value"))
 	require.NoError(t, err)
 
 	// Wait for flush
@@ -222,7 +222,7 @@ func TestEngine_NonExistentKey(t *testing.T) {
 	assert.Nil(t, val)
 
 	// Add some data and flush
-	err = e.Set([]byte("existing"), []byte("value"))
+	err = e.Put([]byte("existing"), []byte("value"))
 	require.NoError(t, err)
 
 	e.WaitForFlush()
@@ -248,12 +248,12 @@ func Test_ReadLatestFromMultipleSSTsInOneTier(t *testing.T) {
 	for i := range 2 {
 		key := fmt.Appendf(nil, "key%d", i)
 		val := fmt.Appendf(nil, "val%d", i)
-		require.NoError(t, e.Set(key, val))
+		require.NoError(t, e.Put(key, val))
 		e.WaitForFlush()
 	}
 
 	// Update key0
-	require.NoError(t, e.Set([]byte("key0"), []byte("new")))
+	require.NoError(t, e.Put([]byte("key0"), []byte("new")))
 	e.WaitForFlush()
 
 	val, found := e.Get([]byte("key0"))
@@ -271,7 +271,7 @@ func TestCompaction_TriggersWhenThresholdExceeded(t *testing.T) {
 	for i := range 3 {
 		key := fmt.Sprintf("key%d", i)
 		val := fmt.Sprintf("val%d", i)
-		require.NoError(t, e.Set([]byte(key), []byte(val)))
+		require.NoError(t, e.Put([]byte(key), []byte(val)))
 	}
 
 	e.WaitForFlush()
@@ -289,11 +289,11 @@ func TestCompaction_MergedOutputContainsLatestValues(t *testing.T) {
 	require.NoError(t, err)
 
 	// Write initial value
-	require.NoError(t, e.Set([]byte("a"), []byte("old")))
+	require.NoError(t, e.Put([]byte("a"), []byte("old")))
 	e.WaitForFlush()
 
 	// Overwrite it in a new SST
-	require.NoError(t, e.Set([]byte("a"), []byte("new")))
+	require.NoError(t, e.Put([]byte("a"), []byte("new")))
 	e.WaitForFlush()
 
 	// Compact should have happened
@@ -309,7 +309,7 @@ func TestCompaction_RespectsDeletes(t *testing.T) {
 	err := e.OpenDB(tmpDir)
 	require.NoError(t, err)
 
-	require.NoError(t, e.Set([]byte("x"), []byte("1")))
+	require.NoError(t, e.Put([]byte("x"), []byte("1")))
 	e.WaitForFlush()
 
 	require.NoError(t, e.Delete([]byte("x")))
@@ -329,7 +329,7 @@ func TestCompaction_DeletesOldSSTables(t *testing.T) {
 	require.NoError(t, err)
 
 	for i := range 3 {
-		require.NoError(t, e.Set(fmt.Appendf(nil, "k%d", i), fmt.Appendf(nil, "v%d", i)))
+		require.NoError(t, e.Put(fmt.Appendf(nil, "k%d", i), fmt.Appendf(nil, "v%d", i)))
 	}
 
 	e.WaitForFlush()
@@ -349,7 +349,7 @@ func TestCompaction_WritesToCorrectTier(t *testing.T) {
 	require.NoError(t, err)
 
 	for i := range 4 {
-		require.NoError(t, e.Set(fmt.Appendf(nil, "k%d", i), fmt.Appendf(nil, "v%d", i)))
+		require.NoError(t, e.Put(fmt.Appendf(nil, "k%d", i), fmt.Appendf(nil, "v%d", i)))
 		e.WaitForFlush()
 	}
 
@@ -371,13 +371,13 @@ func TestCompaction_CreatesValidMergedSSTable(t *testing.T) {
 	err := e.OpenDB(tmpDir)
 	require.NoError(t, err)
 
-	require.NoError(t, e.Set([]byte("z"), []byte("last")))
+	require.NoError(t, e.Put([]byte("z"), []byte("last")))
 	e.WaitForFlush()
 
-	require.NoError(t, e.Set([]byte("z"), []byte("latest")))
+	require.NoError(t, e.Put([]byte("z"), []byte("latest")))
 	e.WaitForFlush()
 
-	require.NoError(t, e.Set([]byte("z"), []byte("last latest")))
+	require.NoError(t, e.Put([]byte("z"), []byte("last latest")))
 	e.WaitForFlush()
 
 	// Validate merged SST file in T1
@@ -405,7 +405,7 @@ func TestCompaction_PromotesToHigherTiers(t *testing.T) {
 
 	// Insert enough keys to trigger multi-tier compaction
 	for i := range 5 {
-		require.NoError(t, e.Set(fmt.Appendf(nil, "k%d", i), fmt.Appendf(nil, "v%d", i)))
+		require.NoError(t, e.Put(fmt.Appendf(nil, "k%d", i), fmt.Appendf(nil, "v%d", i)))
 		e.WaitForFlush()
 	}
 
@@ -435,10 +435,10 @@ func TestEngine_WALReplay_MixedTombstones(t *testing.T) {
 		e := engine.NewEngine(cfg)
 		require.NoError(t, e.OpenDB(tmpDir))
 
-		require.NoError(t, e.Set([]byte("a"), []byte("1")))
-		require.NoError(t, e.Set([]byte("b"), []byte("2")))
+		require.NoError(t, e.Put([]byte("a"), []byte("1")))
+		require.NoError(t, e.Put([]byte("b"), []byte("2")))
 		require.NoError(t, e.Delete([]byte("a")))
-		require.NoError(t, e.Set([]byte("c"), []byte("3")))
+		require.NoError(t, e.Put([]byte("c"), []byte("3")))
 		require.NoError(t, e.Delete([]byte("b")))
 	}()
 
@@ -469,7 +469,7 @@ func TestEngine_Close_WaitsForBackgroundWork(t *testing.T) {
 	for i := range 5 {
 		key := fmt.Appendf(nil, "key%d", i)
 		val := fmt.Appendf(nil, "val%d", i)
-		require.NoError(t, e.Set(key, val))
+		require.NoError(t, e.Put(key, val))
 		e.WaitForFlush()
 	}
 
@@ -497,7 +497,7 @@ func TestEngine_Close_FlushesMemtableEvenIfBelowThreshold(t *testing.T) {
 
 	key := []byte("unflushed_key")
 	val := []byte("unflushed_value")
-	require.NoError(t, e.Set(key, val))
+	require.NoError(t, e.Put(key, val))
 
 	// Do not trigger flush, just close
 	err := e.Close()

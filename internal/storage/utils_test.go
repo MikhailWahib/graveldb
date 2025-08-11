@@ -22,7 +22,7 @@ func TestWriteEntry(t *testing.T) {
 	value := []byte("myvalue")
 	offset := int64(0)
 	entry := storage.Entry{
-		Type:  storage.SetEntry,
+		Type:  storage.PutEntry,
 		Key:   key,
 		Value: value,
 	}
@@ -46,7 +46,7 @@ func TestWriteEntry(t *testing.T) {
 	readValue := buf[9+keyLen:]
 
 	// Validate entryType, key and value
-	assert.Equal(t, storage.SetEntry, storage.EntryType(entryType), "entry type mismatch")
+	assert.Equal(t, storage.PutEntry, storage.EntryType(entryType), "entry type mismatch")
 	assert.Equal(t, key, readKey, "key mismatch")
 	assert.Equal(t, value, readValue, "value mismatch")
 }

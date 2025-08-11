@@ -70,10 +70,10 @@ func (w *WAL) writeEntry(e storage.Entry) error {
 	return nil
 }
 
-// AppendSet appends a put operation to the WAL
-func (w *WAL) AppendSet(key, value []byte) error {
+// AppendPut appends a put operation to the WAL
+func (w *WAL) AppendPut(key, value []byte) error {
 	return w.writeEntry(storage.Entry{
-		Type:  storage.SetEntry,
+		Type:  storage.PutEntry,
 		Key:   key,
 		Value: value,
 	})

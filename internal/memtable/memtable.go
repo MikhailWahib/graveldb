@@ -9,7 +9,7 @@ import (
 // Memtable defines the interface for an in-memory table that supports basic operations
 type Memtable interface {
 	Entries() []storage.Entry
-	Set(key, value []byte) error
+	Put(key, value []byte) error
 	Get(key []byte) (storage.Entry, bool)
 	Delete(key []byte) error
 	Size() int
@@ -34,10 +34,10 @@ func (m *SkiplistMemtable) Entries() []storage.Entry {
 	return m.sl.Entries()
 }
 
-// Set inserts or updates an entry in the memtable
-func (m *SkiplistMemtable) Set(key, value []byte) error {
+// Put inserts or updates an entry in the memtable
+func (m *SkiplistMemtable) Put(key, value []byte) error {
 
-	m.sl.Set(storage.Entry{Type: storage.SetEntry, Key: key, Value: value})
+	m.sl.Put(storage.Entry{Type: storage.PutEntry, Key: key, Value: value})
 	return nil
 }
 

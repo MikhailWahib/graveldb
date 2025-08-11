@@ -13,9 +13,9 @@
 //	}
 //	defer db.Close()
 //
-//	err = db.Set([]byte("key"), []byte("value"))
+//	err = db.Put([]byte("key"), []byte("value"))
 //	if err != nil {
-//		log.Printf("Set failed: %v", err)
+//		log.Printf("Put failed: %v", err)
 //	}
 //
 //	value, exists := db.Get([]byte("key"))
@@ -64,12 +64,12 @@ func Open(path string, cfg *config.Config) (*DB, error) {
 	return &DB{engine: e}, nil
 }
 
-// Set writes a key-value pair to the database.
+// Put writes a key-value pair to the database.
 // Overwrites the value if the key already exists.
 //
 // Both key and value must be non-nil. Returns an error if the operation fails.
-func (db *DB) Set(key, value []byte) error {
-	return db.engine.Set(key, value)
+func (db *DB) Put(key, value []byte) error {
+	return db.engine.Put(key, value)
 }
 
 // Get retrieves the value for a given key.

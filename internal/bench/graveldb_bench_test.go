@@ -62,9 +62,9 @@ func BenchmarkWrite(b *testing.B) {
 
 	for i := 0; i < b.N; i++ {
 		key := generateKey(i)
-		err := db.Set(key, value)
+		err := db.Put(key, value)
 		if err != nil {
-			b.Fatalf("Set failed: %v", err)
+			b.Fatalf("Put failed: %v", err)
 		}
 	}
 }
@@ -78,7 +78,7 @@ func BenchmarkRead(b *testing.B) {
 	numKeys := 10000
 	for i := 0; i < numKeys; i++ {
 		key := generateKey(i)
-		err := db.Set(key, value)
+		err := db.Put(key, value)
 		if err != nil {
 			b.Fatalf("Pre-populate put failed: %v", err)
 		}
@@ -104,7 +104,7 @@ func BenchmarkRandomRead(b *testing.B) {
 	numKeys := 10000
 	for i := 0; i < numKeys; i++ {
 		key := generateKey(i)
-		err := db.Set(key, value)
+		err := db.Put(key, value)
 		if err != nil {
 			b.Fatalf("Pre-populate put failed: %v", err)
 		}
@@ -130,7 +130,7 @@ func BenchmarkConcurrentRead(b *testing.B) {
 	numKeys := 10000
 	for i := 0; i < numKeys; i++ {
 		key := generateKey(i)
-		err := db.Set(key, value)
+		err := db.Put(key, value)
 		if err != nil {
 			b.Fatalf("Pre-populate put failed: %v", err)
 		}
@@ -162,9 +162,9 @@ func BenchmarkConcurrentWrite(b *testing.B) {
 		for pb.Next() {
 			// Use unique keys to avoid collisions across goroutines
 			key := fmt.Appendf(nil, "key_%d_%d", rand.Int63(), i)
-			err := db.Set(key, value)
+			err := db.Put(key, value)
 			if err != nil {
-				b.Fatalf("Set failed: %v", err)
+				b.Fatalf("Put failed: %v", err)
 			}
 			i++
 		}

@@ -49,7 +49,7 @@ func main() {
 	}
 	defer db.Close()
 
-	db.Set([]byte("foo"), []byte("bar"))
+	db.Put([]byte("foo"), []byte("bar"))
 
 	val, ok := db.Get([]byte("foo"))
 	if ok {
@@ -64,7 +64,7 @@ func main() {
 
 ```go
 Open(path string, cfg *graveldb.Config) (*DB, error)
-Set(key, value []byte) error
+Put(key, value []byte) error
 Get(key []byte) ([]byte, bool)
 Delete(key []byte) error
 Close() error

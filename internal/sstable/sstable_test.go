@@ -35,7 +35,7 @@ func TestSSTableWriteRead(t *testing.T) {
 
 	// Write entries
 	for _, data := range testData {
-		err = sst.WriteEntry([]byte(data.key), []byte(data.value))
+		err = sst.PutEntry([]byte(data.key), []byte(data.value))
 		require.NoError(t, err)
 	}
 
@@ -72,7 +72,7 @@ func TestSSTableEmptyValue(t *testing.T) {
 	sst, err := sstable.NewWriter(sstPath, indexInterval)
 	require.NoError(t, err)
 
-	err = sst.WriteEntry([]byte("key1"), []byte(""))
+	err = sst.PutEntry([]byte("key1"), []byte(""))
 	require.NoError(t, err)
 
 	err = sst.Finish()
@@ -113,11 +113,11 @@ func TestSSTableLargeKeyValues(t *testing.T) {
 		largeKey[i] = byte((i * 7) % 256)
 	}
 
-	err = sst.WriteEntry(largeKey, largeValue)
+	err = sst.PutEntry(largeKey, largeValue)
 	require.NoError(t, err)
 
 	// Add a normal key after the large one
-	err = sst.WriteEntry([]byte("small-key"), []byte("small-value"))
+	err = sst.PutEntry([]byte("small-key"), []byte("small-value"))
 	require.NoError(t, err)
 
 	err = sst.Finish()
@@ -160,7 +160,7 @@ func BenchmarkSSTableWriting(b *testing.B) {
 		for j := range 1000 {
 			key := fmt.Appendf(nil, "key-%d", j)
 			value := fmt.Appendf(nil, "value-%d", j)
-			err := sst.WriteEntry(key, value)
+			err := sst.PutEntry(key, value)
 
 			if err != nil {
 				b.Fatalf("Failed to write entry: %v", err)
@@ -193,7 +193,7 @@ func BenchmarkSSTableReading(b *testing.B) {
 	for j := range 1000 {
 		key := fmt.Appendf(nil, "key-%d", j)
 		value := fmt.Appendf(nil, "value-%d", j)
-		err := sst.WriteEntry(key, value)
+		err := sst.PutEntry(key, value)
 		if err != nil {
 			b.Fatalf("Failed to write entry: %v", err)
 		}
@@ -237,11 +237,11 @@ func TestNonExistentKeyLookup(t *testing.T) {
 	sst, err := sstable.NewWriter(sstPath, indexInterval)
 	require.NoError(t, err)
 
-	err = sst.WriteEntry([]byte("a"), []byte("apple"))
+	err = sst.PutEntry([]byte("a"), []byte("apple"))
 	require.NoError(t, err)
-	err = sst.WriteEntry([]byte("c"), []byte("cherry"))
+	err = sst.PutEntry([]byte("c"), []byte("cherry"))
 	require.NoError(t, err)
-	err = sst.WriteEntry([]byte("e"), []byte("eheee"))
+	err = sst.PutEntry([]byte("e"), []byte("eheee"))
 	require.NoError(t, err)
 
 	err = sst.Finish()
@@ -278,7 +278,7 @@ func Test_DeleteSST(t *testing.T) {
 	sst, err := sstable.NewWriter(sstPath, indexInterval)
 	require.NoError(t, err)
 
-	err = sst.WriteEntry([]byte("key"), []byte("value"))
+	err = sst.PutEntry([]byte("key"), []byte("value"))
 	require.NoError(t, err)
 
 	err = sst.Finish()
@@ -307,17 +307,17 @@ func TestSSTableIterator(t *testing.T) {
 		value []byte
 		typ   storage.EntryType
 	}{
-		{[]byte("a"), []byte("apple"), storage.SetEntry},
+		{[]byte("a"), []byte("apple"), storage.PutEntry},
 		{[]byte("b"), nil, storage.DeleteEntry},
-		{[]byte("c"), []byte("cherry"), storage.SetEntry},
-		{[]byte("d"), []byte("date"), storage.SetEntry},
+		{[]byte("c"), []byte("cherry"), storage.PutEntry},
+		{[]byte("d"), []byte("date"), storage.PutEntry},
 		{[]byte("e"), nil, storage.DeleteEntry},
 	}
 
 	// Write entries
 	for _, tc := range testCases {
-		if tc.typ == storage.SetEntry {
-			err = sst.WriteEntry(tc.key, tc.value)
+		if tc.typ == storage.PutEntry {
+			err = sst.PutEntry(tc.key, tc.value)
 			require.NoError(t, err)
 		} else {
 			err = sst.DeleteEntry(tc.key)
@@ -386,8 +386,8 @@ func createSST(t *testing.T, path string, entries []entry) *sstable.Reader {
 	require.NoError(t, err)
 
 	for _, e := range entries {
-		if e.typ == storage.SetEntry {
-			require.NoError(t, sst.WriteEntry([]byte(e.key), []byte(e.value)))
+		if e.typ == storage.PutEntry {
+			require.NoError(t, sst.PutEntry([]byte(e.key), []byte(e.value)))
 		} else {
 			require.NoError(t, sst.DeleteEntry([]byte(e.key)))
 		}
@@ -413,18 +413,18 @@ func TestMerger_MergesCorrectly(t *testing.T) {
 	// Old SSTable: a=1, b=2, c=3
 	oldSSTPath := filepath.Join(tempDir, "old.sst")
 	oldEntries := []entry{
-		{"a", "1", storage.SetEntry},
-		{"b", "2", storage.SetEntry},
-		{"c", "3", storage.SetEntry},
+		{"a", "1", storage.PutEntry},
+		{"b", "2", storage.PutEntry},
+		{"c", "3", storage.PutEntry},
 	}
 	oldSST := createSST(t, oldSSTPath, oldEntries)
 
 	// New SSTable: b=22 (overwrite), c=delete, d=4
 	newSSTPath := filepath.Join(tempDir, "new.sst")
 	newEntries := []entry{
-		{"b", "22", storage.SetEntry},
+		{"b", "22", storage.PutEntry},
 		{"c", "", storage.DeleteEntry},
-		{"d", "4", storage.SetEntry},
+		{"d", "4", storage.PutEntry},
 	}
 	newSST := createSST(t, newSSTPath, newEntries)
 
@@ -449,10 +449,10 @@ func TestMerger_MergesCorrectly(t *testing.T) {
 	iter := outputSSTReader.NewIterator()
 
 	expected := []entry{
-		{"a", "1", storage.SetEntry},
-		{"b", "22", storage.SetEntry},  // newer value
+		{"a", "1", storage.PutEntry},
+		{"b", "22", storage.PutEntry},  // newer value
 		{"c", "", storage.DeleteEntry}, // deleted
-		{"d", "4", storage.SetEntry},
+		{"d", "4", storage.PutEntry},
 	}
 
 	i := 0
@@ -462,7 +462,7 @@ func TestMerger_MergesCorrectly(t *testing.T) {
 		assert.Equal(t, exp.key, string(iter.Key()), "key mismatch at index %d", i)
 		assert.Equal(t, exp.typ, iter.Type(), "entry type mismatch")
 
-		if exp.typ == storage.SetEntry {
+		if exp.typ == storage.PutEntry {
 			assert.Equal(t, exp.value, string(iter.Value()), "value mismatch")
 		} else {
 			assert.True(t, iter.IsDeleted(), "should be deleted")
@@ -482,29 +482,29 @@ func TestMerger_MultipleSSTablesMerge(t *testing.T) {
 	// SST1: a=1, b=2, c=3
 	sst1Path := filepath.Join(tempDir, "sst1.sst")
 	sst1 := createSST(t, sst1Path, []entry{
-		{"a", "1", storage.SetEntry},
-		{"b", "2", storage.SetEntry},
-		{"c", "3", storage.SetEntry},
+		{"a", "1", storage.PutEntry},
+		{"b", "2", storage.PutEntry},
+		{"c", "3", storage.PutEntry},
 	})
 
 	// SST2: b=22, d=4
 	sst2Path := filepath.Join(tempDir, "sst2.sst")
 	sst2 := createSST(t, sst2Path, []entry{
-		{"b", "22", storage.SetEntry}, // overwrites b from sst1
-		{"d", "4", storage.SetEntry},
+		{"b", "22", storage.PutEntry}, // overwrites b from sst1
+		{"d", "4", storage.PutEntry},
 	})
 
 	// SST3: c=delete, e=5
 	sst3Path := filepath.Join(tempDir, "sst3.sst")
 	sst3 := createSST(t, sst3Path, []entry{
 		{"c", "", storage.DeleteEntry}, // deletes c from sst1
-		{"e", "5", storage.SetEntry},
+		{"e", "5", storage.PutEntry},
 	})
 
 	sst4Path := filepath.Join(tempDir, "sst4.sst")
 	sst4 := createSST(t, sst4Path, []entry{
-		{"f", "fifi", storage.SetEntry},
-		{"g", "gigi", storage.SetEntry},
+		{"f", "fifi", storage.PutEntry},
+		{"g", "gigi", storage.PutEntry},
 	})
 
 	// Output SSTable
@@ -530,13 +530,13 @@ func TestMerger_MultipleSSTablesMerge(t *testing.T) {
 
 	// Expected after merge
 	expected := []entry{
-		{"a", "1", storage.SetEntry},
-		{"b", "22", storage.SetEntry},  // from sst2
+		{"a", "1", storage.PutEntry},
+		{"b", "22", storage.PutEntry},  // from sst2
 		{"c", "", storage.DeleteEntry}, // deleted in sst3
-		{"d", "4", storage.SetEntry},   // from sst2
-		{"e", "5", storage.SetEntry},   // from sst3
-		{"f", "fifi", storage.SetEntry},
-		{"g", "gigi", storage.SetEntry},
+		{"d", "4", storage.PutEntry},   // from sst2
+		{"e", "5", storage.PutEntry},   // from sst3
+		{"f", "fifi", storage.PutEntry},
+		{"g", "gigi", storage.PutEntry},
 	}
 
 	i := 0
@@ -545,7 +545,7 @@ func TestMerger_MultipleSSTablesMerge(t *testing.T) {
 		exp := expected[i]
 		assert.Equal(t, exp.key, string(iter.Key()), "Key mismatch at index %d", i)
 		assert.Equal(t, exp.typ, iter.Type(), "Type mismatch at index %d", i)
-		if exp.typ == storage.SetEntry {
+		if exp.typ == storage.PutEntry {
 			assert.Equal(t, exp.value, string(iter.Value()), "Value mismatch")
 		} else {
 			assert.True(t, iter.IsDeleted())
