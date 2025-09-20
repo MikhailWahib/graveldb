@@ -7,17 +7,17 @@
 
 ---
 
-## 🚀 Highlights
+## Highlights
 
-- ⚡ Fast writes via in-memory memtable + WAL
-- 🧱 Immutable SSTables for optimized reads
-- 🔄 Tiered compaction for efficient storage
-- 🔒 Thread-safe by default
-- ⚙️ Configurable tuning parameters
+- Fast writes via in-memory memtable + WAL
+- Immutable SSTables for optimized reads
+- Tiered compaction for efficient storage
+- Thread-safe by default
+- Configurable tuning parameters
 
 ---
 
-## 📦 Package Usage
+## Package Usage
 
 **Go 1.21+ required**
 
@@ -145,7 +145,7 @@ db, err := graveldb.Open("/tmp/db", cfg)
 
 ---
 
-## 🛠️ Local Development
+## Local Development
 
 To run or modify the code locally:
 
