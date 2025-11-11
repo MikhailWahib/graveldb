@@ -59,6 +59,7 @@ func (sl *SkipList) Entries() []storage.Entry {
 
 	for current != nil {
 		result = append(result, storage.Entry{
+			Type:  current.entry.Type,
 			Key:   current.key,
 			Value: current.entry.Value,
 		})

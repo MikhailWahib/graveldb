@@ -76,7 +76,6 @@ func (m *Merger) Merge() error {
 	ih := &iteratorHeap{}
 	heap.Init(ih)
 
-	// Reverse assign priority: 0 = newest, N = oldest
 	for i := range len(m.sources) {
 		source := m.sources[i]
 		iter := source.NewIterator()
@@ -86,7 +85,7 @@ func (m *Merger) Merge() error {
 				value:    iter.Value(),
 				iter:     iter,
 				deleted:  iter.IsDeleted(),
-				priority: i, // higher = newer
+				priority: i,
 			})
 		}
 	}
@@ -123,7 +122,6 @@ func (m *Merger) Merge() error {
 
 		lastKey = item.key
 
-		// Push next from this iterator
 		if item.iter.Next() {
 			heap.Push(ih, &iteratorItem{
 				key:      item.iter.Key(),

@@ -21,13 +21,13 @@ import (
 type Engine struct {
 	mu   sync.RWMutex
 	once sync.Once
+	wg   sync.WaitGroup
 
 	dataDir          string
 	memtable         memtable.Memtable
 	wal              *wal.WAL
 	tiers            [][]*sstable.Reader
 	compactionMgr    *CompactionManager
-	wg               sync.WaitGroup // WaitGroup for background flush/compaction
 	sstCounter       *atomic.Uint64
 	maxMemtableSize  int
 	maxTablesPerTier int
@@ -161,6 +161,7 @@ func (e *Engine) Tiers() [][]*sstable.Reader {
 // Put inserts or updates a key-value pair in the database.
 func (e *Engine) Put(key, value []byte) error {
 	e.mu.Lock()
+	defer e.mu.Unlock()
 
 	if err := e.wal.AppendPut(key, value); err != nil {
 		return err
@@ -170,21 +171,16 @@ func (e *Engine) Put(key, value []byte) error {
 		return err
 	}
 
-	reachedMemtableThreshold := e.memtable.Size() > e.maxMemtableSize
-
-	if reachedMemtableThreshold {
+	if e.memtable.Size() > e.maxMemtableSize {
 		old := e.memtable
 		e.memtable = memtable.NewMemtable()
 		e.wg.Add(1)
-		e.mu.Unlock()
 		go func() {
 			defer e.wg.Done()
 			if err := e.flushMemtable(old); err != nil {
 				log.Printf("flushMemtable error: %v", err)
 			}
 		}()
-	} else {
-		e.mu.Unlock()
 	}
 
 	return nil
@@ -198,7 +194,6 @@ func (e *Engine) Get(key []byte) ([]byte, bool) {
 	// First check memtable
 	entry, found := e.memtable.Get(key)
 	if found {
-		// If found and marked as deleted, return immediately
 		if entry.Type == storage.DeleteEntry {
 			return nil, false
 		}
@@ -211,7 +206,6 @@ func (e *Engine) Get(key []byte) ([]byte, bool) {
 		for i := len(tier) - 1; i >= 0; i-- {
 			reader := tier[i]
 
-			// Use the new Get method instead of Lookup
 			entry, err := reader.Get(key)
 			if err == nil {
 				if entry.Type == storage.DeleteEntry {
@@ -253,8 +247,15 @@ func (e *Engine) flushMemtable(mt memtable.Memtable) error {
 	}
 
 	for _, entry := range entries {
-		if err := writer.PutEntry(entry.Key, entry.Value); err != nil {
-			return fmt.Errorf("failed to put entry to SSTable: %w", err)
+		switch entry.Type {
+		case storage.PutEntry:
+			if err := writer.PutEntry(entry.Key, entry.Value); err != nil {
+				return fmt.Errorf("failed to put entry to SSTable: %w", err)
+			}
+		case storage.DeleteEntry:
+			if err := writer.DeleteEntry(entry.Key); err != nil {
+				return fmt.Errorf("failed to put entry to SSTable: %w", err)
+			}
 		}
 	}
 
