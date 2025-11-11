@@ -141,7 +141,7 @@ func (w *WAL) flushBuffer() error {
 	}
 	w.buf = w.buf[:0]
 
-	if err := w.file.Sync(); err == nil {
+	if err := w.file.Sync(); err != nil {
 		return err
 	}
 
