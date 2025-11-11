@@ -23,7 +23,7 @@ func WriteEntryAt(e Entry, file *os.File, offset int64) (int64, error) {
 	binary.BigEndian.PutUint32(buf[EntryTypeSize+LengthSize:EntryTypeSize+(LengthSize*2)], uint32(valueLen))
 	copy(buf[9:], e.Key)
 	if valueLen > 0 {
-		copy(buf[9+keyLen:], e.Value)
+		copy(buf[PrefixSize+keyLen:], e.Value)
 	}
 
 	n, err := file.WriteAt(buf, offset)
@@ -70,7 +70,6 @@ func ReadEntryAt(f *os.File, offset int64) (Entry, int64, error) {
 }
 
 // ReadEntryFromReader reads a single entry from a buffered reader using a length-prefixed format.
-// Used for sequential read (e.g., during SSTable scan or WAL replay).
 func ReadEntryFromReader(r *bufio.Reader) (Entry, error) {
 	lenBuf := make([]byte, PrefixSize)
 	if _, err := io.ReadFull(r, lenBuf); err != nil {

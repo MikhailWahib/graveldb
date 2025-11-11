@@ -14,11 +14,11 @@ import (
 
 // WAL manages the write-ahead log file
 type WAL struct {
-	mu sync.RWMutex
+	mu sync.Mutex
 
-	path   string
-	file   *os.File
-	writer *bufio.Writer
+	path string
+	file *os.File
+	buf  []byte
 
 	flushTimer  *time.Timer
 	flushNotify chan struct{}
@@ -39,7 +39,7 @@ func NewWAL(path string, flushThreshold int, flushInterval time.Duration) (*WAL,
 	wal := &WAL{
 		path:           path,
 		file:           file,
-		writer:         bufio.NewWriterSize(file, flushThreshold),
+		buf:            make([]byte, 0, flushThreshold),
 		flushNotify:    make(chan struct{}, 1),
 		closeChan:      make(chan struct{}),
 		flushThreshold: flushThreshold,
@@ -50,7 +50,7 @@ func NewWAL(path string, flushThreshold int, flushInterval time.Duration) (*WAL,
 	return wal, nil
 }
 
-// writeEntry serializes and writes an entry to the buffer
+// writeEntry appends a serialized entry to the WAL buffer and triggers flush if needed
 func (w *WAL) writeEntry(e storage.Entry) error {
 	w.mu.Lock()
 	defer w.mu.Unlock()
@@ -60,13 +60,15 @@ func (w *WAL) writeEntry(e storage.Entry) error {
 	}
 
 	data := storage.SerializeEntry(e)
-	if _, err := w.writer.Write(data); err != nil {
-		return err
+	w.buf = append(w.buf, data...)
+
+	if len(w.buf) >= w.flushThreshold {
+		select {
+		case w.flushNotify <- struct{}{}:
+		default:
+		}
 	}
 
-	if w.writer.Buffered() >= w.flushThreshold {
-		w.signalFlush()
-	}
 	return nil
 }
 
@@ -82,18 +84,9 @@ func (w *WAL) AppendPut(key, value []byte) error {
 // AppendDelete appends a delete operation to the WAL
 func (w *WAL) AppendDelete(key []byte) error {
 	return w.writeEntry(storage.Entry{
-		Type:  storage.DeleteEntry,
-		Key:   key,
-		Value: []byte{},
+		Type: storage.DeleteEntry,
+		Key:  key,
 	})
-}
-
-// signalFlush triggers an immediate flush
-func (w *WAL) signalFlush() {
-	select {
-	case w.flushNotify <- struct{}{}:
-	default:
-	}
 }
 
 // backgroundFlusher handles periodic and threshold-based flushing
@@ -135,21 +128,24 @@ func (w *WAL) asyncFlush() {
 }
 
 // flushBuffer writes buffered data to disk and syncs
-func (w *WAL) flushBuffer() {
+func (w *WAL) flushBuffer() error {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 
-	if w.closed || w.writer.Buffered() == 0 {
-		return
+	if w.closed || len(w.buf) == 0 {
+		return nil
 	}
 
-	if err := w.writer.Flush(); err != nil {
-		return
+	if _, err := w.file.Write(w.buf); err != nil {
+		return err
+	}
+	w.buf = w.buf[:0]
+
+	if err := w.file.Sync(); err == nil {
+		return err
 	}
 
-	if err := w.file.Sync(); err != nil {
-		return
-	}
+	return nil
 }
 
 // Replay reads entries from the beginning of the WAL file
@@ -158,12 +154,10 @@ func (w *WAL) Replay() ([]storage.Entry, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer func() {
-		_ = readFile.Close()
-	}()
+	defer func() { _ = readFile.Close() }()
 
-	reader := bufio.NewReader(readFile)
 	var entries []storage.Entry
+	reader := bufio.NewReader(readFile)
 	for {
 		entry, err := storage.ReadEntryFromReader(reader)
 		if err != nil {
@@ -179,13 +173,25 @@ func (w *WAL) Replay() ([]storage.Entry, error) {
 
 // Close flushes all data and closes the WAL
 func (w *WAL) Close() error {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+
 	if w.closed {
 		return nil
 	}
 
 	close(w.closeChan)
-	w.flushTimer.Stop()
-	w.flushBuffer()
+	if w.flushTimer != nil {
+		w.flushTimer.Stop()
+	}
+
+	if len(w.buf) > 0 {
+		if _, err := w.file.Write(w.buf); err != nil {
+			return err
+		}
+		_ = w.file.Sync()
+	}
+
 	w.closed = true
 	return w.file.Close()
 }
