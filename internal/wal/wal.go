@@ -4,6 +4,7 @@ package wal
 import (
 	"bufio"
 	"errors"
+	"fmt"
 	"io"
 	"os"
 	"sync"
@@ -24,6 +25,7 @@ type WAL struct {
 	flushNotify chan struct{}
 	closeChan   chan struct{}
 	closed      bool
+	err         error
 
 	flushThreshold int
 	flushInterval  time.Duration
@@ -56,7 +58,11 @@ func (w *WAL) writeEntry(e storage.Entry) error {
 	defer w.mu.Unlock()
 
 	if w.closed {
-		return errors.New("WAL is closed")
+		if w.err != nil {
+			return fmt.Errorf("WAL is closed: %w", w.err)
+
+		}
+		return fmt.Errorf("WAL is closed")
 	}
 
 	data := storage.SerializeEntry(e)
@@ -94,9 +100,15 @@ func (w *WAL) backgroundFlusher() {
 	for {
 		select {
 		case <-w.flushNotify:
-			w.flushBuffer()
+			if err := w.flushBuffer(); err != nil {
+				_ = w.Close()
+				w.err = err
+			}
 		case <-w.flushTimer.C:
-			w.flushBuffer()
+			if err := w.flushBuffer(); err != nil {
+				_ = w.Close()
+				w.err = err
+			}
 			w.resetTimer()
 		case <-w.closeChan:
 			return
