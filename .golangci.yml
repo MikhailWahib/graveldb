@@ -23,9 +23,10 @@ issues:
   exclude-use-default: false
   max-issues-per-linter: 0
   max-same-issues: 0
-
+  exclude-dirs:
+    - bin
+    - internal/bench
+    
 run:
   deadline: 5m
   tests: true
-  skip-dirs:
-    - bin
