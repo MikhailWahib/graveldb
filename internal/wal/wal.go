@@ -201,7 +201,9 @@ func (w *WAL) Close() error {
 		if _, err := w.file.Write(w.buf); err != nil {
 			return err
 		}
-		_ = w.file.Sync()
+		if err := w.file.Sync(); err != nil {
+			return err
+		}
 	}
 
 	w.closed = true
