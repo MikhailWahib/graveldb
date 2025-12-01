@@ -207,5 +207,6 @@ func (w *WAL) Close() error {
 	}
 
 	w.closed = true
-	return w.file.Close()
+	_ = w.file.Close()
+	return nil
 }

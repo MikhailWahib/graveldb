@@ -63,6 +63,8 @@ func TestEngine_WALReplay(t *testing.T) {
 		require.NoError(t, err)
 		err = e.Delete([]byte("a"))
 		require.NoError(t, err)
+		err = e.Close()
+		require.NoError(t, err)
 	}()
 
 	// Simulate restart (replay WAL)
