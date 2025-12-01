@@ -1,4 +1,4 @@
-.PHONY: compile-tests debug-test bench clean
+.PHONY: test compile-tests debug-test bench clean
 
 BIN_DIR = ./bin/tests
 

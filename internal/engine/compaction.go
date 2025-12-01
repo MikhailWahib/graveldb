@@ -4,12 +4,14 @@ package engine
 import (
 	"fmt"
 	"os"
+	"sync"
 
 	"github.com/MikhailWahib/graveldb/internal/sstable"
 )
 
 // CompactionManager manages the compaction process for SSTable tiers.
 type CompactionManager struct {
+	mu     sync.Mutex
 	engine *Engine
 }
 
@@ -42,11 +44,12 @@ func (cm *CompactionManager) generateOutputPath(tier int) string {
 
 // compactTiers compacts tiers starting from the given tier.
 func (cm *CompactionManager) compactTiers(start int) error {
+	cm.mu.Lock()
+	defer cm.mu.Unlock()
+
 	for tier := start; tier < len(cm.engine.tiers); tier++ {
 		// Check if compaction is needed
-		cm.engine.mu.RLock()
 		shouldCompact := cm.shouldCompactTier(tier)
-		cm.engine.mu.RUnlock()
 
 		if !shouldCompact {
 			return nil
@@ -64,7 +67,7 @@ func (cm *CompactionManager) compact(tier int) error {
 	merger := sstable.NewMerger()
 
 	cm.engine.mu.RLock()
-	inputs := cm.engine.tiers[tier]
+	inputs := append([]*sstable.Reader(nil), cm.engine.tiers[tier]...)
 	cm.engine.mu.RUnlock()
 
 	if len(inputs) == 0 {
@@ -111,8 +114,11 @@ func (cm *CompactionManager) compact(tier int) error {
 		return fmt.Errorf("failed to merge SSTables: %w", err)
 	}
 
-	if err := cm.finalizeAndCleanup(output, inputs); err != nil {
-		return err
+	if err := output.Close(); err != nil {
+		for _, sst := range inputs {
+			_ = sst.Close()
+		}
+		return fmt.Errorf("failed to close output SST: %w", err)
 	}
 
 	// Open the output file as a reader for the next tier
@@ -127,21 +133,12 @@ func (cm *CompactionManager) compact(tier int) error {
 	cm.engine.tiers[tier+1] = append(cm.engine.tiers[tier+1], outputReader)
 	cm.engine.mu.Unlock()
 
-	return nil
-}
-
-func (cm *CompactionManager) finalizeAndCleanup(output *sstable.Writer, inputs []*sstable.Reader) error {
-	if err := output.Close(); err != nil {
-		for _, sst := range inputs {
-			_ = sst.Close()
-		}
-		return fmt.Errorf("failed to close output SST: %w", err)
-	}
-
+	// Cleanup inputs
 	for _, sst := range inputs {
 		path := sst.Path()
 		_ = sst.Close()
 		_ = os.Remove(path)
 	}
+
 	return nil
 }

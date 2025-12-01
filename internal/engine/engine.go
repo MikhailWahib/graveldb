@@ -23,15 +23,16 @@ type Engine struct {
 	once sync.Once
 	wg   sync.WaitGroup
 
-	dataDir          string
-	memtable         memtable.Memtable
-	wal              *wal.WAL
-	tiers            [][]*sstable.Reader
-	compactionMgr    *CompactionManager
-	sstCounter       *atomic.Uint64
-	maxMemtableSize  int
-	maxTablesPerTier int
-	config           *config.Config
+	dataDir            string
+	memtable           memtable.Memtable
+	immutableMemtables []memtable.Memtable
+	wal                *wal.WAL
+	tiers              [][]*sstable.Reader
+	compactionMgr      *CompactionManager
+	sstCounter         *atomic.Uint64
+	maxMemtableSize    int
+	maxTablesPerTier   int
+	config             *config.Config
 }
 
 // NewEngine creates a new Engine instance for the given data directory.
@@ -172,12 +173,13 @@ func (e *Engine) Put(key, value []byte) error {
 	}
 
 	if e.memtable.Size() > e.maxMemtableSize {
-		old := e.memtable
+		e.immutableMemtables = append(e.immutableMemtables, e.memtable)
 		e.memtable = memtable.NewMemtable()
+		immutableToFlush := e.immutableMemtables[len(e.immutableMemtables)-1]
 		e.wg.Add(1)
 		go func() {
 			defer e.wg.Done()
-			if err := e.flushMemtable(old); err != nil {
+			if err := e.flushMemtable(immutableToFlush); err != nil {
 				log.Printf("flushMemtable error: %v", err)
 			}
 		}()
@@ -198,6 +200,17 @@ func (e *Engine) Get(key []byte) ([]byte, bool) {
 			return nil, false
 		}
 		return entry.Value, true
+	}
+
+	// Check immutable memtables
+	for _, mt := range e.immutableMemtables {
+		entry, found := mt.Get(key)
+		if found {
+			if entry.Type == storage.DeleteEntry {
+				return nil, false
+			}
+			return entry.Value, true
+		}
 	}
 
 	// Not found in memtable, search in disk
@@ -259,7 +272,6 @@ func (e *Engine) flushMemtable(mt memtable.Memtable) error {
 		}
 	}
 
-	// Close will automatically call Finish()
 	if err := writer.Close(); err != nil {
 		return fmt.Errorf("failed to finish SSTable: %w", err)
 	}
@@ -270,6 +282,8 @@ func (e *Engine) flushMemtable(mt memtable.Memtable) error {
 	}
 
 	e.mu.Lock()
+	defer e.mu.Unlock()
+
 	// Ensure tier 0 exists
 	if len(e.tiers) == 0 {
 		e.tiers = append(e.tiers, []*sstable.Reader{})
@@ -278,8 +292,15 @@ func (e *Engine) flushMemtable(mt memtable.Memtable) error {
 	// Append reader to T0
 	e.tiers[0] = append(e.tiers[0], reader)
 
+	// Remove the flushed memtable from immutableMemtables
+	for i, immutable := range e.immutableMemtables {
+		if immutable == mt {
+			e.immutableMemtables = append(e.immutableMemtables[:i], e.immutableMemtables[i+1:]...)
+			break
+		}
+	}
+
 	shouldCompact := e.compactionMgr.shouldCompactTier(0)
-	e.mu.Unlock()
 
 	// Run compaction on T0 if needed
 	if shouldCompact {
@@ -314,6 +335,13 @@ func (e *Engine) Close() error {
 			// Flush synchronously to ensure data is persisted
 			if err := e.flushMemtable(old); err != nil {
 				finalErr = fmt.Errorf("failed to flush final memtable: %w", err)
+			}
+		}
+
+		// Flush all immutable memtables
+		for _, immutable := range e.immutableMemtables {
+			if err := e.flushMemtable(immutable); err != nil {
+				finalErr = fmt.Errorf("failed to flush immutable memtable: %w", err)
 			}
 		}
 
