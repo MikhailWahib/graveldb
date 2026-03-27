@@ -265,29 +265,13 @@ func (e *Engine) Delete(key []byte) error {
 func (e *Engine) flushMemtable(mt memtable.Memtable, walPath string) error {
 	entries := mt.Entries()
 
-	l0Dir := filepath.Join(e.dataDir, "sstables", "T0")
-	if err := os.MkdirAll(l0Dir, 0755); err != nil {
-		return fmt.Errorf("failed to create T0 directory: %w", err)
-	}
-
-	filename := fmt.Sprintf("%s/%06d.sst", l0Dir, e.sstCounter.Add(1))
-
-	writer, err := sstable.NewWriter(filename, e.config.IndexInterval)
+	filename, writer, err := e.newFlushWriter()
 	if err != nil {
 		return err
 	}
 
-	for _, entry := range entries {
-		switch entry.Type {
-		case storage.PutEntry:
-			if err := writer.PutEntry(entry.Key, entry.Value); err != nil {
-				return fmt.Errorf("failed to put entry to SSTable: %w", err)
-			}
-		case storage.DeleteEntry:
-			if err := writer.DeleteEntry(entry.Key); err != nil {
-				return fmt.Errorf("failed to put entry to SSTable: %w", err)
-			}
-		}
+	if err := e.writeFlushEntries(writer, entries); err != nil {
+		return err
 	}
 
 	if err := writer.Close(); err != nil {
@@ -299,45 +283,100 @@ func (e *Engine) flushMemtable(mt memtable.Memtable, walPath string) error {
 		return fmt.Errorf("failed to open SSTable for reading: %w", err)
 	}
 
+	shouldCompact := e.registerFlushedMemtable(mt, reader)
+	e.maybeCompactT0(shouldCompact)
+	e.removeWalSegment(walPath)
+
+	return nil
+}
+
+func (e *Engine) newFlushWriter() (string, *sstable.Writer, error) {
+	l0Dir := filepath.Join(e.dataDir, "sstables", "T0")
+	if err := os.MkdirAll(l0Dir, 0755); err != nil {
+		return "", nil, fmt.Errorf("failed to create T0 directory: %w", err)
+	}
+
+	filename := filepath.Join(l0Dir, fmt.Sprintf("%06d.sst", e.sstCounter.Add(1)))
+
+	writer, err := sstable.NewWriter(filename, e.config.IndexInterval)
+	if err != nil {
+		return "", nil, err
+	}
+
+	return filename, writer, nil
+}
+
+func (e *Engine) writeFlushEntries(writer *sstable.Writer, entries []storage.Entry) error {
+	for _, entry := range entries {
+		if err := e.writeFlushEntry(writer, entry); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (e *Engine) writeFlushEntry(writer *sstable.Writer, entry storage.Entry) error {
+	switch entry.Type {
+	case storage.PutEntry:
+		if err := writer.PutEntry(entry.Key, entry.Value); err != nil {
+			return fmt.Errorf("failed to put entry to SSTable: %w", err)
+		}
+	case storage.DeleteEntry:
+		if err := writer.DeleteEntry(entry.Key); err != nil {
+			return fmt.Errorf("failed to put entry to SSTable: %w", err)
+		}
+	}
+	return nil
+}
+
+func (e *Engine) registerFlushedMemtable(mt memtable.Memtable, reader *sstable.Reader) bool {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 
-	// Ensure tier 0 exists
 	if len(e.tiers) == 0 {
 		e.tiers = append(e.tiers, []*sstable.Reader{})
 	}
 
-	// Append reader to T0
 	e.tiers[0] = append(e.tiers[0], reader)
+	e.removeImmutableMemtableLocked(mt)
 
-	// Remove the flushed memtable from immutableMemtables
+	if e.compactionMgr == nil {
+		return false
+	}
+	return e.compactionMgr.shouldCompactTier(0)
+}
+
+func (e *Engine) removeImmutableMemtableLocked(mt memtable.Memtable) {
 	for i, immutable := range e.immutableMemtables {
 		if immutable.mt == mt {
 			e.immutableMemtables = append(e.immutableMemtables[:i], e.immutableMemtables[i+1:]...)
-			break
+			return
 		}
 	}
+}
 
-	shouldCompact := e.compactionMgr.shouldCompactTier(0)
-
-	// Run compaction on T0 if needed
-	if shouldCompact {
-		e.wg.Add(1)
-		go func() {
-			defer e.wg.Done()
-			if err := e.compactionMgr.compactTiers(0); err != nil {
-				log.Printf("compaction error: %v", err)
-			}
-		}()
+func (e *Engine) maybeCompactT0(shouldCompact bool) {
+	if !shouldCompact {
+		return
 	}
 
-	if walPath != "" {
-		if err := os.Remove(walPath); err != nil && !os.IsNotExist(err) {
-			log.Printf("failed to remove WAL file %s: %v", walPath, err)
+	e.wg.Add(1)
+	go func() {
+		defer e.wg.Done()
+		if err := e.compactionMgr.compactTiers(0); err != nil {
+			log.Printf("compaction error: %v", err)
 		}
+	}()
+}
+
+func (e *Engine) removeWalSegment(walPath string) {
+	if walPath == "" {
+		return
 	}
 
-	return nil
+	if err := os.Remove(walPath); err != nil && !os.IsNotExist(err) {
+		log.Printf("failed to remove WAL file %s: %v", walPath, err)
+	}
 }
 
 // Close gracefully shuts down the engine, ensuring all data is persisted.
