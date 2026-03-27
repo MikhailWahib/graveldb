@@ -129,9 +129,10 @@ func (cm *CompactionManager) compact(tier int) error {
 
 	// Update tiers structure
 	cm.engine.mu.Lock()
+	defer cm.engine.mu.Unlock()
+
 	cm.engine.tiers[tier] = []*sstable.Reader{}
 	cm.engine.tiers[tier+1] = append(cm.engine.tiers[tier+1], outputReader)
-	cm.engine.mu.Unlock()
 
 	// Cleanup inputs
 	for _, sst := range inputs {
