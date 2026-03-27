@@ -25,14 +25,20 @@ type Engine struct {
 
 	dataDir            string
 	memtable           memtable.Memtable
-	immutableMemtables []memtable.Memtable
+	immutableMemtables []immutableMemtable
 	wal                *wal.WAL
 	tiers              [][]*sstable.Reader
 	compactionMgr      *CompactionManager
 	sstCounter         *atomic.Uint64
+	walCounter         *atomic.Uint64
 	maxMemtableSize    int
 	maxTablesPerTier   int
 	config             *config.Config
+}
+
+type immutableMemtable struct {
+	mt      memtable.Memtable
+	walPath string
 }
 
 // NewEngine creates a new Engine instance for the given data directory.
@@ -46,6 +52,7 @@ func NewEngine(cfg *config.Config) *Engine {
 		memtable:         memtable.NewMemtable(),
 		tiers:            make([][]*sstable.Reader, 0),
 		sstCounter:       new(atomic.Uint64),
+		walCounter:       new(atomic.Uint64),
 		maxMemtableSize:  cfg.MaxMemtableSize,
 		maxTablesPerTier: cfg.MaxTablesPerTier,
 		config:           cfg,
@@ -60,12 +67,12 @@ func (e *Engine) OpenDB(dataDir string) error {
 	}
 	e.dataDir = dataDir
 
-	wal, err := wal.NewWAL(dataDir+"/wal.log", e.config.WALFlushThreshold, e.config.WALFlushInterval)
+	walFile, err := wal.NewWAL(dataDir+"/wal.log", e.config.WALFlushThreshold, e.config.WALFlushInterval)
 	if err != nil {
 		return err
 	}
 
-	entries, err := wal.Replay()
+	entries, err := wal.ReplayDir(dataDir)
 	if err != nil {
 		return err
 	}
@@ -82,7 +89,7 @@ func (e *Engine) OpenDB(dataDir string) error {
 			}
 		}
 	}
-	e.wal = wal
+	e.wal = walFile
 
 	compactionMgr := NewCompactionManager(e)
 	e.compactionMgr = compactionMgr
@@ -173,13 +180,23 @@ func (e *Engine) Put(key, value []byte) error {
 	}
 
 	if e.memtable.Size() > e.maxMemtableSize {
-		e.immutableMemtables = append(e.immutableMemtables, e.memtable)
+		walPath := e.nextWalPath()
+		sealedPath, err := e.wal.Seal(walPath)
+		if err != nil {
+			return err
+		}
+
+		immutable := immutableMemtable{
+			mt:      e.memtable,
+			walPath: sealedPath,
+		}
+		e.immutableMemtables = append(e.immutableMemtables, immutable)
 		e.memtable = memtable.NewMemtable()
 		immutableToFlush := e.immutableMemtables[len(e.immutableMemtables)-1]
 		e.wg.Add(1)
 		go func() {
 			defer e.wg.Done()
-			if err := e.flushMemtable(immutableToFlush); err != nil {
+			if err := e.flushMemtable(immutableToFlush.mt, immutableToFlush.walPath); err != nil {
 				log.Printf("flushMemtable error: %v", err)
 			}
 		}()
@@ -204,7 +221,7 @@ func (e *Engine) Get(key []byte) ([]byte, bool) {
 
 	// Check immutable memtables, newest to oldest so newer writes win.
 	for i := len(e.immutableMemtables) - 1; i >= 0; i-- {
-		mt := e.immutableMemtables[i]
+		mt := e.immutableMemtables[i].mt
 		entry, found := mt.Get(key)
 		if found {
 			if entry.Type == storage.DeleteEntry {
@@ -245,7 +262,7 @@ func (e *Engine) Delete(key []byte) error {
 }
 
 // flushMemtable writes the contents of a memtable to a new SSTable on disk.
-func (e *Engine) flushMemtable(mt memtable.Memtable) error {
+func (e *Engine) flushMemtable(mt memtable.Memtable, walPath string) error {
 	entries := mt.Entries()
 
 	l0Dir := filepath.Join(e.dataDir, "sstables", "T0")
@@ -295,7 +312,7 @@ func (e *Engine) flushMemtable(mt memtable.Memtable) error {
 
 	// Remove the flushed memtable from immutableMemtables
 	for i, immutable := range e.immutableMemtables {
-		if immutable == mt {
+		if immutable.mt == mt {
 			e.immutableMemtables = append(e.immutableMemtables[:i], e.immutableMemtables[i+1:]...)
 			break
 		}
@@ -312,6 +329,12 @@ func (e *Engine) flushMemtable(mt memtable.Memtable) error {
 				log.Printf("compaction error: %v", err)
 			}
 		}()
+	}
+
+	if walPath != "" {
+		if err := os.Remove(walPath); err != nil && !os.IsNotExist(err) {
+			log.Printf("failed to remove WAL file %s: %v", walPath, err)
+		}
 	}
 
 	return nil
@@ -332,16 +355,27 @@ func (e *Engine) Close() error {
 		// Flush any remaining memtable data
 		if e.memtable != nil && e.memtable.Size() > 0 {
 			old := e.memtable
+			walPath := ""
+			if e.wal != nil {
+				path := e.nextWalPath()
+				segment, err := e.wal.Seal(path)
+				if err != nil {
+					finalErr = fmt.Errorf("failed to seal WAL before final flush: %w", err)
+				} else {
+					walPath = segment
+				}
+			}
 			e.memtable = memtable.NewMemtable()
 			// Flush synchronously to ensure data is persisted
-			if err := e.flushMemtable(old); err != nil {
+			if err := e.flushMemtable(old, walPath); err != nil {
 				finalErr = fmt.Errorf("failed to flush final memtable: %w", err)
 			}
 		}
 
 		// Flush all immutable memtables
-		for _, immutable := range e.immutableMemtables {
-			if err := e.flushMemtable(immutable); err != nil {
+		pending := append([]immutableMemtable(nil), e.immutableMemtables...)
+		for _, immutable := range pending {
+			if err := e.flushMemtable(immutable.mt, immutable.walPath); err != nil {
 				finalErr = fmt.Errorf("failed to flush immutable memtable: %w", err)
 			}
 		}
@@ -370,4 +404,8 @@ func (e *Engine) Close() error {
 // WaitForFlush waits for all flushed to be done (for tests)
 func (e *Engine) WaitForFlush() {
 	e.wg.Wait()
+}
+
+func (e *Engine) nextWalPath() string {
+	return filepath.Join(e.dataDir, fmt.Sprintf("wal-%06d.log", e.walCounter.Add(1)))
 }
