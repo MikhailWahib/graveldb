@@ -202,8 +202,9 @@ func (e *Engine) Get(key []byte) ([]byte, bool) {
 		return entry.Value, true
 	}
 
-	// Check immutable memtables
-	for _, mt := range e.immutableMemtables {
+	// Check immutable memtables, newest to oldest so newer writes win.
+	for i := len(e.immutableMemtables) - 1; i >= 0; i-- {
+		mt := e.immutableMemtables[i]
 		entry, found := mt.Get(key)
 		if found {
 			if entry.Type == storage.DeleteEntry {
