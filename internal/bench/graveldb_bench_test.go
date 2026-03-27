@@ -3,7 +3,6 @@ package graveldb_test
 import (
 	"fmt"
 	"math/rand"
-	"os"
 	"sync"
 	"testing"
 	"time"
@@ -17,325 +16,256 @@ const (
 	benchNumKeys   = 10000
 )
 
-// Helper function to generate random bytes
-func randomBytes(n int) []byte {
-	b := make([]byte, n)
-	rand.Read(b)
-	return b
+func init() {
+	rand.Seed(time.Now().UnixNano())
 }
 
-func makeKey(i int) []byte {
-	return []byte(fmt.Sprintf("key_%016d", i))
+func writeBenchConfig() *graveldb.Config {
+	return graveldb.DefaultConfig()
 }
 
-func makeValue(i int) []byte {
-	return []byte(fmt.Sprintf("value_%0120d", i))
-}
-
-func setupBench(b *testing.B) (*graveldb.DB, string, func()) {
-	dir, err := os.MkdirTemp("", "graveldb-bench-*")
-	if err != nil {
-		b.Fatal(err)
-	}
-
+func readBenchConfig() *graveldb.Config {
 	cfg := graveldb.DefaultConfig()
+	cfg.MaxMemtableSize = 64 * 1024
+	cfg.MaxTablesPerTier = 64
+	return cfg
+}
+
+func openBenchDB(b *testing.B, dir string, cfg *graveldb.Config) *graveldb.DB {
+	b.Helper()
+
 	db, err := graveldb.Open(dir, cfg)
 	if err != nil {
-		os.RemoveAll(dir)
 		b.Fatal(err)
 	}
 
-	cleanup := func() {
-		db.Close()
-		os.RemoveAll(dir)
-	}
+	b.Cleanup(func() {
+		if err := db.Close(); err != nil {
+			b.Logf("close error: %v", err)
+		}
+	})
 
-	return db, dir, cleanup
+	return db
 }
 
-func BenchmarkSequentialWrites(b *testing.B) {
-	db, _, cleanup := setupBench(b)
-	defer cleanup()
+func makeDataset(count, start int) ([][]byte, [][]byte) {
+	keys := make([][]byte, count)
+	values := make([][]byte, count)
 
-	b.ResetTimer()
-	b.ReportAllocs()
+	for i := 0; i < count; i++ {
+		idx := start + i
+		keys[i] = []byte(fmt.Sprintf("key_%016d", idx))
+		values[i] = []byte(fmt.Sprintf("value_%0120d", idx))
+	}
 
-	for i := 0; i < b.N; i++ {
-		key := makeKey(i)
-		value := makeValue(i)
-		if err := db.Put(key, value); err != nil {
+	return keys, values
+}
+
+func makeRandomDataset(count int) ([][]byte, [][]byte) {
+	keys := make([][]byte, count)
+	values := make([][]byte, count)
+
+	for i := 0; i < count; i++ {
+		keys[i] = make([]byte, benchKeySize)
+		values[i] = make([]byte, benchValueSize)
+		_, _ = rand.Read(keys[i])
+		_, _ = rand.Read(values[i])
+	}
+
+	return keys, values
+}
+
+func preloadReadDB(b *testing.B) (*graveldb.DB, [][]byte) {
+	b.Helper()
+
+	dir := b.TempDir()
+	seedDB := openBenchDB(b, dir, readBenchConfig())
+	keys, values := makeDataset(benchNumKeys, 0)
+
+	for i := 0; i < benchNumKeys; i++ {
+		if err := seedDB.Put(keys[i], values[i]); err != nil {
 			b.Fatal(err)
 		}
 	}
 
-	b.StopTimer()
-	totalBytes := int64(b.N) * int64(benchKeySize+benchValueSize)
-	b.SetBytes(totalBytes / int64(b.N))
-	b.ReportMetric(float64(b.N)/b.Elapsed().Seconds(), "ops/sec")
+	if err := seedDB.Close(); err != nil {
+		b.Fatal(err)
+	}
+
+	db := openBenchDB(b, dir, readBenchConfig())
+	return db, keys
 }
 
-func BenchmarkRandomWrites(b *testing.B) {
-	db, _, cleanup := setupBench(b)
-	defer cleanup()
-
-	// Pre-generate random keys and values
-	keys := make([][]byte, b.N)
-	values := make([][]byte, b.N)
-	for i := 0; i < b.N; i++ {
-		keys[i] = randomBytes(benchKeySize)
-		values[i] = randomBytes(benchValueSize)
-	}
-
-	b.ResetTimer()
-	b.ReportAllocs()
-
-	for i := 0; i < b.N; i++ {
-		if err := db.Put(keys[i], values[i]); err != nil {
-			b.Fatal(err)
-		}
-	}
-
-	b.StopTimer()
+func reportThroughput(b *testing.B) {
+	b.Helper()
 	b.SetBytes(int64(benchKeySize + benchValueSize))
 	b.ReportMetric(float64(b.N)/b.Elapsed().Seconds(), "ops/sec")
 }
 
-func BenchmarkSequentialReads(b *testing.B) {
-	db, _, cleanup := setupBench(b)
-	defer cleanup()
+func BenchmarkWrites(b *testing.B) {
+	b.Run("Sequential", func(b *testing.B) {
+		dir := b.TempDir()
+		db := openBenchDB(b, dir, writeBenchConfig())
+		keys, values := makeDataset(b.N, 0)
 
-	// Pre-populate database
-	numKeys := benchNumKeys
-	for i := 0; i < numKeys; i++ {
-		key := makeKey(i)
-		value := makeValue(i)
-		if err := db.Put(key, value); err != nil {
-			b.Fatal(err)
+		b.ResetTimer()
+		b.ReportAllocs()
+
+		for i := 0; i < b.N; i++ {
+			if err := db.Put(keys[i], values[i]); err != nil {
+				b.Fatal(err)
+			}
 		}
-	}
 
-	b.ResetTimer()
-	b.ReportAllocs()
+		reportThroughput(b)
+	})
 
-	for i := 0; i < b.N; i++ {
-		key := makeKey(i % numKeys)
-		_, found := db.Get(key)
-		if !found {
-			b.Fatalf("key not found: %s", key)
+	b.Run("Random", func(b *testing.B) {
+		dir := b.TempDir()
+		db := openBenchDB(b, dir, writeBenchConfig())
+		keys, values := makeRandomDataset(b.N)
+
+		b.ResetTimer()
+		b.ReportAllocs()
+
+		for i := 0; i < b.N; i++ {
+			if err := db.Put(keys[i], values[i]); err != nil {
+				b.Fatal(err)
+			}
 		}
-	}
 
-	b.StopTimer()
-	b.SetBytes(int64(benchKeySize + benchValueSize))
-	b.ReportMetric(float64(b.N)/b.Elapsed().Seconds(), "ops/sec")
+		reportThroughput(b)
+	})
+
+	b.Run("Concurrent", func(b *testing.B) {
+		for _, workers := range []int{1, 2, 4, 8, 16} {
+			b.Run(fmt.Sprintf("workers_%d", workers), func(b *testing.B) {
+				dir := b.TempDir()
+				db := openBenchDB(b, dir, writeBenchConfig())
+
+				opsPerWorker := b.N / workers
+				keys := make([][][]byte, workers)
+				values := make([][][]byte, workers)
+				for worker := 0; worker < workers; worker++ {
+					keys[worker], values[worker] = makeDataset(opsPerWorker, worker*opsPerWorker)
+				}
+
+				b.ResetTimer()
+				b.ReportAllocs()
+
+				var wg sync.WaitGroup
+				for worker := 0; worker < workers; worker++ {
+					wg.Add(1)
+					go func(id int) {
+						defer wg.Done()
+						for i := 0; i < opsPerWorker; i++ {
+							if err := db.Put(keys[id][i], values[id][i]); err != nil {
+								b.Error(err)
+								return
+							}
+						}
+					}(worker)
+				}
+
+				wg.Wait()
+				reportThroughput(b)
+			})
+		}
+	})
 }
 
-func BenchmarkRandomReads(b *testing.B) {
-	db, _, cleanup := setupBench(b)
-	defer cleanup()
+func BenchmarkReads(b *testing.B) {
+	b.Run("Sequential", func(b *testing.B) {
+		db, keys := preloadReadDB(b)
 
-	// Pre-populate database
-	numKeys := benchNumKeys
-	for i := 0; i < numKeys; i++ {
-		key := makeKey(i)
-		value := makeValue(i)
-		if err := db.Put(key, value); err != nil {
-			b.Fatal(err)
+		b.ResetTimer()
+		b.ReportAllocs()
+
+		for i := 0; i < b.N; i++ {
+			key := keys[i%len(keys)]
+			if _, found := db.Get(key); !found {
+				b.Fatalf("key not found: %s", key)
+			}
 		}
-	}
 
-	// Pre-generate random indices
-	indices := make([]int, b.N)
-	for i := 0; i < b.N; i++ {
-		indices[i] = rand.Intn(numKeys)
-	}
+		reportThroughput(b)
+	})
 
-	b.ResetTimer()
-	b.ReportAllocs()
-
-	for i := 0; i < b.N; i++ {
-		key := makeKey(indices[i])
-		_, found := db.Get(key)
-		if !found {
-			b.Fatalf("key not found: %s", key)
+	b.Run("Random", func(b *testing.B) {
+		db, keys := preloadReadDB(b)
+		indices := make([]int, b.N)
+		for i := 0; i < b.N; i++ {
+			indices[i] = rand.Intn(len(keys))
 		}
-	}
 
-	b.StopTimer()
-	b.SetBytes(int64(benchKeySize + benchValueSize))
-	b.ReportMetric(float64(b.N)/b.Elapsed().Seconds(), "ops/sec")
+		b.ResetTimer()
+		b.ReportAllocs()
+
+		for i := 0; i < b.N; i++ {
+			if _, found := db.Get(keys[indices[i]]); !found {
+				b.Fatalf("key not found: %s", keys[indices[i]])
+			}
+		}
+
+		reportThroughput(b)
+	})
+
+	b.Run("Concurrent", func(b *testing.B) {
+		for _, workers := range []int{1, 2, 4, 8, 16} {
+			b.Run(fmt.Sprintf("workers_%d", workers), func(b *testing.B) {
+				db, keys := preloadReadDB(b)
+
+				opsPerWorker := b.N / workers
+				indices := make([][]int, workers)
+				for worker := 0; worker < workers; worker++ {
+					indices[worker] = make([]int, opsPerWorker)
+					for i := 0; i < opsPerWorker; i++ {
+						indices[worker][i] = rand.Intn(len(keys))
+					}
+				}
+
+				b.ResetTimer()
+				b.ReportAllocs()
+
+				var wg sync.WaitGroup
+				for worker := 0; worker < workers; worker++ {
+					wg.Add(1)
+					go func(id int) {
+						defer wg.Done()
+						for i := 0; i < opsPerWorker; i++ {
+							if _, found := db.Get(keys[indices[id][i]]); !found {
+								b.Errorf("key not found: %s", keys[indices[id][i]])
+								return
+							}
+						}
+					}(worker)
+				}
+
+				wg.Wait()
+				reportThroughput(b)
+			})
+		}
+	})
 }
 
-func BenchmarkMixedReadWrite(b *testing.B) {
-	db, _, cleanup := setupBench(b)
-	defer cleanup()
-
-	// Pre-populate database
-	numKeys := benchNumKeys
-	for i := 0; i < numKeys; i++ {
-		key := makeKey(i)
-		value := makeValue(i)
-		if err := db.Put(key, value); err != nil {
-			b.Fatal(err)
-		}
-	}
+func BenchmarkMixedWorkload(b *testing.B) {
+	db, keys := preloadReadDB(b)
+	writes, values := makeDataset(b.N/2+1, benchNumKeys)
+	writeIdx := 0
 
 	b.ResetTimer()
 	b.ReportAllocs()
 
 	for i := 0; i < b.N; i++ {
 		if i%2 == 0 {
-			// Read operation
-			key := makeKey(rand.Intn(numKeys))
-			db.Get(key)
+			_, _ = db.Get(keys[rand.Intn(len(keys))])
 		} else {
-			// Write operation
-			key := makeKey(numKeys + i)
-			value := makeValue(numKeys + i)
-			if err := db.Put(key, value); err != nil {
+			if err := db.Put(writes[writeIdx], values[writeIdx]); err != nil {
 				b.Fatal(err)
 			}
+			writeIdx++
 		}
 	}
 
-	b.StopTimer()
-	b.SetBytes(int64(benchKeySize + benchValueSize))
-	b.ReportMetric(float64(b.N)/b.Elapsed().Seconds(), "ops/sec")
-}
-
-// BenchmarkConcurrentReads measures concurrent read throughput
-func BenchmarkConcurrentReads(b *testing.B) {
-	db, _, cleanup := setupBench(b)
-	defer cleanup()
-
-	// Pre-populate database
-	numKeys := benchNumKeys
-	for i := 0; i < numKeys; i++ {
-		key := makeKey(i)
-		value := makeValue(i)
-		if err := db.Put(key, value); err != nil {
-			b.Fatal(err)
-		}
-	}
-
-	concurrency := []int{1, 2, 4, 8, 16}
-	for _, workers := range concurrency {
-		b.Run(fmt.Sprintf("workers_%d", workers), func(b *testing.B) {
-			b.ResetTimer()
-			b.ReportAllocs()
-
-			var wg sync.WaitGroup
-			opsPerWorker := b.N / workers
-
-			for w := range workers {
-				wg.Add(1)
-				go func(workerID int) {
-					defer wg.Done()
-					for range opsPerWorker {
-						key := makeKey(rand.Intn(numKeys))
-						db.Get(key)
-					}
-				}(w)
-			}
-
-			wg.Wait()
-			b.StopTimer()
-			b.SetBytes(int64(benchKeySize + benchValueSize))
-			b.ReportMetric(float64(b.N)/b.Elapsed().Seconds(), "ops/sec")
-		})
-	}
-}
-
-// BenchmarkConcurrentWrites measures concurrent write throughput
-func BenchmarkConcurrentWrites(b *testing.B) {
-	db, _, cleanup := setupBench(b)
-	defer cleanup()
-
-	concurrency := []int{1, 2, 4, 8, 16}
-	for _, workers := range concurrency {
-		b.Run(fmt.Sprintf("workers_%d", workers), func(b *testing.B) {
-			b.ResetTimer()
-			b.ReportAllocs()
-
-			var wg sync.WaitGroup
-			opsPerWorker := b.N / workers
-
-			for w := 0; w < workers; w++ {
-				wg.Add(1)
-				go func(workerID int) {
-					defer wg.Done()
-					for i := 0; i < opsPerWorker; i++ {
-						key := makeKey(workerID*opsPerWorker + i)
-						value := makeValue(workerID*opsPerWorker + i)
-						if err := db.Put(key, value); err != nil {
-							b.Error(err)
-							return
-						}
-					}
-				}(w)
-			}
-
-			wg.Wait()
-			b.StopTimer()
-			b.SetBytes(int64(benchKeySize + benchValueSize))
-			b.ReportMetric(float64(b.N)/b.Elapsed().Seconds(), "ops/sec")
-		})
-	}
-}
-
-// BenchmarkConcurrentMixed measures concurrent mixed read/write workload
-func BenchmarkConcurrentMixed(b *testing.B) {
-	db, _, cleanup := setupBench(b)
-	defer cleanup()
-
-	numKeys := benchNumKeys
-	for i := 0; i < numKeys; i++ {
-		key := makeKey(i)
-		value := makeValue(i)
-		if err := db.Put(key, value); err != nil {
-			b.Fatal(err)
-		}
-	}
-
-	concurrency := []int{2, 4, 8, 16}
-	for _, workers := range concurrency {
-		b.Run(fmt.Sprintf("workers_%d", workers), func(b *testing.B) {
-			b.ResetTimer()
-			b.ReportAllocs()
-
-			var wg sync.WaitGroup
-			opsPerWorker := b.N / workers
-
-			for w := 0; w < workers; w++ {
-				wg.Add(1)
-				go func(workerID int) {
-					defer wg.Done()
-					for i := 0; i < opsPerWorker; i++ {
-						if i%2 == 0 {
-							// Read
-							key := makeKey(rand.Intn(numKeys))
-							db.Get(key)
-						} else {
-							// Write
-							key := makeKey(numKeys + workerID*opsPerWorker + i)
-							value := makeValue(numKeys + workerID*opsPerWorker + i)
-							if err := db.Put(key, value); err != nil {
-								b.Error(err)
-								return
-							}
-						}
-					}
-				}(w)
-			}
-
-			wg.Wait()
-			b.StopTimer()
-			b.SetBytes(int64(benchKeySize + benchValueSize))
-			b.ReportMetric(float64(b.N)/b.Elapsed().Seconds(), "ops/sec")
-		})
-	}
-}
-
-func init() {
-	rand.Seed(time.Now().UnixNano())
+	reportThroughput(b)
 }
