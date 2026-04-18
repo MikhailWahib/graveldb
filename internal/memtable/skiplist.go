@@ -53,20 +53,68 @@ func NewSkipList() *SkipList {
 }
 
 // Entries return all entries in the skiplist
-func (sl *SkipList) Entries() []storage.Entry {
-	var result []storage.Entry
-	current := sl.head.next[0]
+// func (sl *SkipList) Entries() []storage.Entry {
+// 	var result []storage.Entry
+// 	current := sl.head.next[0]
 
-	for current != nil {
-		result = append(result, storage.Entry{
-			Type:  current.entry.Type,
-			Key:   current.key,
-			Value: current.entry.Value,
-		})
-		current = current.next[0]
+// 	for current != nil {
+// 		result = append(result, storage.Entry{
+// 			Type:  current.entry.Type,
+// 			Key:   current.key,
+// 			Value: current.entry.Value,
+// 		})
+// 		current = current.next[0]
+// 	}
+
+// 	return result
+// }
+
+// Iterator provides sequential access to entries in the skiplist
+type SkiplistIterator struct {
+	current *SkipListNode
+}
+
+// NewIterator creates a new SkiplistIterator for the skiplist
+func (sl *SkipList) NewIterator() *SkiplistIterator {
+	return &SkiplistIterator{
+		current: sl.head,
 	}
+}
 
-	return result
+// Next advances the iterator to the next entry
+func (it *SkiplistIterator) Next() bool {
+	for it.current != nil && len(it.current.next) > 0 && it.current.next[0] != nil {
+		it.current = it.current.next[0]
+		if len(it.current.key) > 0 {
+			return true
+		}
+	}
+	it.current = nil
+	return false
+}
+
+// Key returns the current entry's key
+func (it *SkiplistIterator) Key() []byte {
+	if it.current == nil {
+		return nil
+	}
+	return it.current.key
+}
+
+// Value returns the current entry's value
+func (it *SkiplistIterator) Value() []byte {
+	if it.current == nil {
+		return nil
+	}
+	return it.current.entry.Value
+}
+
+// Type returns the current entry's type
+func (it *SkiplistIterator) Type() storage.EntryType {
+	if it.current == nil {
+		return 0
+	}
+	return it.current.entry.Type
 }
 
 // randomLevel determines the level for a new node using a probabilistic model.

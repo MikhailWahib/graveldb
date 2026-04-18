@@ -269,15 +269,23 @@ func (e *Engine) Delete(key []byte) error {
 
 // flushMemtable writes the contents of a memtable to a new SSTable on disk.
 func (e *Engine) flushMemtable(mt memtable.Memtable, walPath string) error {
-	entries := mt.Entries()
+	iter := mt.NewIterator()
 
 	filename, writer, err := e.newFlushWriter()
 	if err != nil {
 		return err
 	}
 
-	if err := e.writeFlushEntries(writer, entries); err != nil {
-		return err
+	for iter.Next() {
+		if iter.Type() == storage.DeleteEntry {
+			if err := writer.DeleteEntry(iter.Key()); err != nil {
+				return err
+			}
+		} else {
+			if err := writer.PutEntry(iter.Key(), iter.Value()); err != nil {
+				return err
+			}
+		}
 	}
 
 	if err := writer.Close(); err != nil {

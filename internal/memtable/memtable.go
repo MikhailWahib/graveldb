@@ -8,12 +8,20 @@ import (
 
 // Memtable defines the interface for an in-memory table that supports basic operations
 type Memtable interface {
-	Entries() []storage.Entry
+	// Entries() []storage.Entry
+	NewIterator() Iterator
 	Put(key, value []byte) error
 	Get(key []byte) (storage.Entry, bool)
 	Delete(key []byte) error
 	Size() int
 	Clear()
+}
+
+type Iterator interface {
+	Next() bool
+	Key() []byte
+	Value() []byte
+	Type() storage.EntryType
 }
 
 // SkiplistMemtable implements the Memtable interface using a skiplist
@@ -30,8 +38,13 @@ func NewMemtable() Memtable {
 }
 
 // Entries returns all entries in the memtable memtable.
-func (m *SkiplistMemtable) Entries() []storage.Entry {
-	return m.sl.Entries()
+// func (m *SkiplistMemtable) Entries() []storage.Entry {
+// 	return m.sl.Entries()
+// }
+
+// NewIterator creates a new iterator for the memtable
+func (m *SkiplistMemtable) NewIterator() Iterator {
+	return m.sl.NewIterator()
 }
 
 // Put inserts or updates an entry in the memtable
