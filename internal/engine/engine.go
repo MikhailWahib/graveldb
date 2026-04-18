@@ -3,7 +3,6 @@ package engine
 import (
 	"errors"
 	"fmt"
-	gerrors "github.com/MikhailWahib/graveldb/internal/errors"
 	"log"
 	"os"
 	"path/filepath"
@@ -11,6 +10,8 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
+
+	gerrors "github.com/MikhailWahib/graveldb/internal/errors"
 
 	"github.com/MikhailWahib/graveldb/internal/config"
 	"github.com/MikhailWahib/graveldb/internal/memtable"

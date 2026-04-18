@@ -8,6 +8,7 @@ import (
 	"io"
 	"os"
 	"sort"
+	"sync"
 
 	gerrors "github.com/MikhailWahib/graveldb/internal/errors"
 
@@ -16,10 +17,11 @@ import (
 
 // Reader provides functionality to read from an SSTable
 type Reader struct {
-	file      *os.File
-	path      string
-	index     []IndexEntry
-	indexBase int64
+	file       *os.File
+	path       string
+	index      []IndexEntry
+	indexBase  int64
+	blockCache sync.Map
 }
 
 // NewReader creates a new SSTable reader
@@ -30,8 +32,8 @@ func NewReader(path string) (*Reader, error) {
 	}
 
 	reader := &Reader{
-		file: file,
-		path: path,
+		file:       file,
+		path:       path,
 	}
 
 	if err := reader.loadIndex(); err != nil {
@@ -111,17 +113,24 @@ func (r *Reader) Get(key []byte) (storage.Entry, error) {
 		blockEnd = r.index[pos+1].Offset
 	}
 
-	// load block to memory
-	offset := r.index[pos].Offset
-	blockSize := blockEnd - offset
-	indexBlockBuf := make([]byte, blockSize)
-	_, err := r.file.ReadAt(indexBlockBuf, offset)
-	if err != nil {
-		return storage.Entry{}, gerrors.IO("failed to read block for key", err)
+	// load block to memory (use cache if available)
+	blockOffset := r.index[pos].Offset
+	blockSize := blockEnd - blockOffset
+
+	var indexBlockBuf []byte
+	if buf, ok := r.blockCache.Load(blockOffset); ok {
+		indexBlockBuf = buf.([]byte)
+	} else {
+		indexBlockBuf = make([]byte, blockSize)
+		_, err := r.file.ReadAt(indexBlockBuf, blockOffset)
+		if err != nil {
+			return storage.Entry{}, gerrors.IO("failed to read block for key", err)
+		}
+		r.blockCache.Store(blockOffset, indexBlockBuf)
 	}
 
-	// resets index to read from the beginning of the in-mem block
-	offset = 0
+	// scan entries in block
+	var offset int64
 	for offset < blockSize {
 		entry, n, err := storage.DecodeEntry(indexBlockBuf[offset:])
 		if err != nil {
