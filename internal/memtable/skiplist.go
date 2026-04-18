@@ -69,7 +69,7 @@ func NewSkipList() *SkipList {
 // 	return result
 // }
 
-// Iterator provides sequential access to entries in the skiplist
+// SkiplistIterator provides sequential access to entries in the skiplist.
 type SkiplistIterator struct {
 	current *SkipListNode
 }

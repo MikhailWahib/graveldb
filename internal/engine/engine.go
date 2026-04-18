@@ -320,29 +320,6 @@ func (e *Engine) newFlushWriter() (string, *sstable.Writer, error) {
 	return filename, writer, nil
 }
 
-func (e *Engine) writeFlushEntries(writer *sstable.Writer, entries []storage.Entry) error {
-	for _, entry := range entries {
-		if err := e.writeFlushEntry(writer, entry); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-func (e *Engine) writeFlushEntry(writer *sstable.Writer, entry storage.Entry) error {
-	switch entry.Type {
-	case storage.PutEntry:
-		if err := writer.PutEntry(entry.Key, entry.Value); err != nil {
-			return gerrors.IO("failed to put entry to SSTable", err)
-		}
-	case storage.DeleteEntry:
-		if err := writer.DeleteEntry(entry.Key); err != nil {
-			return gerrors.IO("failed to put entry to SSTable", err)
-		}
-	}
-	return nil
-}
-
 func (e *Engine) registerFlushedMemtable(mt memtable.Memtable, reader *sstable.Reader) bool {
 	e.mu.Lock()
 	defer e.mu.Unlock()

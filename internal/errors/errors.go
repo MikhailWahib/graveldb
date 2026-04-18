@@ -40,7 +40,7 @@ func (e *Error) Error() string {
 	if e.Message != "" {
 		return fmt.Sprintf("%s: %s", e.Code, e.Message)
 	}
-	return fmt.Sprintf("%s", e.Code)
+	return string(e.Code)
 }
 
 // Unwrap returns the underlying error.

@@ -17,6 +17,7 @@ type Memtable interface {
 	Clear()
 }
 
+// Iterator provides sequential access to entries in the memtable.
 type Iterator interface {
 	Next() bool
 	Key() []byte
