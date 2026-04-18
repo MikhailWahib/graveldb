@@ -5,10 +5,11 @@ package sstable
 import (
 	"bytes"
 	"encoding/binary"
-	gerrors "github.com/MikhailWahib/graveldb/internal/errors"
 	"io"
 	"os"
 	"sort"
+
+	gerrors "github.com/MikhailWahib/graveldb/internal/errors"
 
 	"github.com/MikhailWahib/graveldb/internal/storage"
 )
@@ -101,7 +102,7 @@ func (r *Reader) Get(key []byte) (storage.Entry, error) {
 	}) - 1
 
 	if pos < 0 {
-		return storage.Entry{}, gerrors.NotFound("key not found in index", nil)
+		return storage.Entry{}, gerrors.ErrNotFound
 	}
 
 	// Calculate the block boundary
@@ -133,7 +134,7 @@ func (r *Reader) Get(key []byte) (storage.Entry, error) {
 		cmp := bytes.Compare(entry.Key, key)
 		if cmp == 0 {
 			if storage.EntryType(entry.Type) == storage.DeleteEntry {
-				return storage.Entry{}, gerrors.NotFound("key marked as deleted", nil)
+				return storage.Entry{}, gerrors.ErrNotFound
 			}
 			return storage.Entry{Type: storage.PutEntry, Key: key, Value: entry.Value}, nil
 		}
@@ -145,7 +146,7 @@ func (r *Reader) Get(key []byte) (storage.Entry, error) {
 		offset += int64(n)
 	}
 
-	return storage.Entry{}, gerrors.NotFound("key not found in block", nil)
+	return storage.Entry{}, gerrors.ErrNotFound
 }
 
 // NewIterator creates a new iterator

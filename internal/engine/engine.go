@@ -1,6 +1,7 @@
 package engine
 
 import (
+	"errors"
 	"fmt"
 	gerrors "github.com/MikhailWahib/graveldb/internal/errors"
 	"log"
@@ -244,6 +245,9 @@ func (e *Engine) Get(key []byte) ([]byte, bool) {
 					return nil, false
 				}
 				return entry.Value, true
+			}
+			if !errors.Is(err, gerrors.ErrNotFound) {
+				return nil, false // unexpected error
 			}
 		}
 	}

@@ -22,6 +22,8 @@ const (
 	ErrCodeInternal Code = "INTERNAL"
 )
 
+var ErrNotFound = &Error{Code: ErrCodeNotFound, Message: "not found"}
+
 // Error represents a custom error with code, message, and underlying error.
 type Error struct {
 	Code    Code
@@ -53,11 +55,6 @@ func (e *Error) Is(target error) bool {
 // IO creates an I/O error.
 func IO(msg string, err error) error {
 	return &Error{Code: ErrCodeIO, Message: msg, Err: err}
-}
-
-// NotFound creates a not found error.
-func NotFound(msg string, err error) error {
-	return &Error{Code: ErrCodeNotFound, Message: msg, Err: err}
 }
 
 // Corruption creates a corruption error.
