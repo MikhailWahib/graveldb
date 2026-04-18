@@ -1,4 +1,4 @@
-.PHONY: test compile-tests debug-test bench clean
+.PHONY: test compile-tests debug-test bench bench-cpu bench-concurrent bench-read bench-mixed clean
 
 BIN_DIR = ./bin/tests
 
@@ -23,7 +23,7 @@ debug-test:
 
 
 bench:
-	go test -bench=. ./internal/bench -benchmem
+	GOMAXPROCS=0 go test -bench=. ./internal/bench -benchmem
 
 clean:
 	@echo "Cleaning up compiled test binaries..."

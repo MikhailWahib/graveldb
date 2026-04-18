@@ -67,7 +67,7 @@ jobs:
         check-latest: true
 
     - name: Bench
-      run: go test -bench=. ./internal/bench -benchmem
+      run: GOMAXPROCS=0 go test -bench=. ./internal/bench -benchmem
 
   build:
     name: Build
