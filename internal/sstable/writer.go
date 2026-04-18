@@ -4,8 +4,9 @@ package sstable
 
 import (
 	"encoding/binary"
-	"fmt"
 	"os"
+
+	gerrors "github.com/MikhailWahib/graveldb/internal/errors"
 
 	"github.com/MikhailWahib/graveldb/internal/storage"
 )
@@ -26,7 +27,7 @@ type Writer struct {
 func NewWriter(path string, indexInterval int) (*Writer, error) {
 	file, err := os.OpenFile(path, os.O_CREATE|os.O_RDWR|os.O_TRUNC, 0644)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create SSTable: %w", err)
+		return nil, gerrors.IO("failed to create SSTable", err)
 	}
 
 	return &Writer{
@@ -40,7 +41,7 @@ func NewWriter(path string, indexInterval int) (*Writer, error) {
 // PutEntry writes a key-value pair to the SSTable
 func (w *Writer) PutEntry(key, value []byte) error {
 	if w.finished {
-		return fmt.Errorf("cannot write to finished SSTable")
+		return gerrors.Internal("cannot write to finished SSTable", nil)
 	}
 	return w.writeEntry(storage.Entry{
 		Type:  storage.PutEntry,
@@ -52,7 +53,7 @@ func (w *Writer) PutEntry(key, value []byte) error {
 // DeleteEntry writes a deletion marker for a key to the SSTable
 func (w *Writer) DeleteEntry(key []byte) error {
 	if w.finished {
-		return fmt.Errorf("cannot write to finished SSTable")
+		return gerrors.Internal("cannot write to finished SSTable", nil)
 	}
 	return w.writeEntry(storage.Entry{
 		Type:  storage.DeleteEntry,
@@ -120,7 +121,7 @@ func (w *Writer) Finish() error {
 	// Write the index section to the file
 	indexOffset := w.offset // The current offset will be the start of the index section
 	if err := w.writeIndex(); err != nil {
-		return fmt.Errorf("failed to write index: %w", err)
+		return gerrors.IO("failed to write index", err)
 	}
 
 	// Write the footer section at the end of the file
@@ -131,18 +132,15 @@ func (w *Writer) Finish() error {
 	binary.BigEndian.PutUint64(footer[:IndexOffsetSize], uint64(indexOffset))
 	binary.BigEndian.PutUint64(footer[IndexOffsetSize:], uint64(w.indexSize))
 
-	// Write the footer to the file
 	_, err := w.file.WriteAt(footer, w.offset)
 	if err != nil {
-		return fmt.Errorf("failed to write footer: %w", err)
+		return gerrors.IO("failed to write footer", err)
 	}
 
-	// Update the offset for the footer
 	w.offset += FooterSize
 
-	// Sync the file to make sure everything is written to disk
 	if err := w.file.Sync(); err != nil {
-		return fmt.Errorf("failed to sync file: %w", err)
+		return gerrors.IO("failed to sync file", err)
 	}
 
 	w.finished = true

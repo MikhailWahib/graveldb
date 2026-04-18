@@ -2,6 +2,7 @@ package engine
 
 import (
 	"fmt"
+	gerrors "github.com/MikhailWahib/graveldb/internal/errors"
 	"log"
 	"os"
 	"path/filepath"
@@ -115,7 +116,7 @@ func (e *Engine) parseTiers() error {
 		tierStr := strings.TrimPrefix(dir.Name(), "T")
 		tier, err := strconv.Atoi(tierStr)
 		if err != nil {
-			return fmt.Errorf("invalid tier dir name %q: %w", dir.Name(), err)
+			return gerrors.Internal("invalid tier dir name", err)
 		}
 
 		// Ensure tiers slice is long enough
@@ -275,12 +276,12 @@ func (e *Engine) flushMemtable(mt memtable.Memtable, walPath string) error {
 	}
 
 	if err := writer.Close(); err != nil {
-		return fmt.Errorf("failed to finish SSTable: %w", err)
+		return gerrors.IO("failed to finish SSTable", err)
 	}
 
 	reader, err := sstable.NewReader(filename)
 	if err != nil {
-		return fmt.Errorf("failed to open SSTable for reading: %w", err)
+		return gerrors.IO("failed to open SSTable for reading", err)
 	}
 
 	shouldCompact := e.registerFlushedMemtable(mt, reader)
@@ -293,7 +294,7 @@ func (e *Engine) flushMemtable(mt memtable.Memtable, walPath string) error {
 func (e *Engine) newFlushWriter() (string, *sstable.Writer, error) {
 	l0Dir := filepath.Join(e.dataDir, "sstables", "T0")
 	if err := os.MkdirAll(l0Dir, 0755); err != nil {
-		return "", nil, fmt.Errorf("failed to create T0 directory: %w", err)
+		return "", nil, gerrors.IO("failed to create T0 directory", err)
 	}
 
 	filename := filepath.Join(l0Dir, fmt.Sprintf("%06d.sst", e.sstCounter.Add(1)))
@@ -319,11 +320,11 @@ func (e *Engine) writeFlushEntry(writer *sstable.Writer, entry storage.Entry) er
 	switch entry.Type {
 	case storage.PutEntry:
 		if err := writer.PutEntry(entry.Key, entry.Value); err != nil {
-			return fmt.Errorf("failed to put entry to SSTable: %w", err)
+			return gerrors.IO("failed to put entry to SSTable", err)
 		}
 	case storage.DeleteEntry:
 		if err := writer.DeleteEntry(entry.Key); err != nil {
-			return fmt.Errorf("failed to put entry to SSTable: %w", err)
+			return gerrors.IO("failed to put entry to SSTable", err)
 		}
 	}
 	return nil
@@ -399,37 +400,33 @@ func (e *Engine) Close() error {
 				path := e.nextWalPath()
 				segment, err := e.wal.Seal(path)
 				if err != nil {
-					finalErr = fmt.Errorf("failed to seal WAL before final flush: %w", err)
+					finalErr = gerrors.IO("failed to seal WAL before final flush", err)
 				} else {
 					walPath = segment
 				}
 			}
 			e.memtable = memtable.NewMemtable()
-			// Flush synchronously to ensure data is persisted
 			if err := e.flushMemtable(old, walPath); err != nil {
-				finalErr = fmt.Errorf("failed to flush final memtable: %w", err)
+				finalErr = gerrors.IO("failed to flush final memtable", err)
 			}
 		}
 
-		// Flush all immutable memtables
 		pending := append([]immutableMemtable(nil), e.immutableMemtables...)
 		for _, immutable := range pending {
 			if err := e.flushMemtable(immutable.mt, immutable.walPath); err != nil {
-				finalErr = fmt.Errorf("failed to flush immutable memtable: %w", err)
+				finalErr = gerrors.IO("failed to flush immutable memtable", err)
 			}
 		}
 
-		// Close opened SST readers
 		for _, tier := range e.tiers {
 			for _, reader := range tier {
 				_ = reader.Close()
 			}
 		}
 
-		// Close the WAL
 		if e.wal != nil {
 			if err := e.wal.Close(); err != nil {
-				finalErr = fmt.Errorf("failed to close WAL: %w", err)
+				finalErr = gerrors.IO("failed to close WAL", err)
 			}
 		}
 
