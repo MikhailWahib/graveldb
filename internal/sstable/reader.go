@@ -32,8 +32,8 @@ func NewReader(path string) (*Reader, error) {
 	}
 
 	reader := &Reader{
-		file:       file,
-		path:       path,
+		file: file,
+		path: path,
 	}
 
 	if err := reader.loadIndex(); err != nil {

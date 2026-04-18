@@ -22,7 +22,8 @@ const (
 	ErrCodeInternal Code = "INTERNAL"
 )
 
-var ErrNotFound = &Error{Code: ErrCodeNotFound, Message: "not found"}
+// ErrNotFound represents a Not Found error
+var ErrNotFound = &Error{Code: ErrCodeNotFound}
 
 // Error represents a custom error with code, message, and underlying error.
 type Error struct {
@@ -36,7 +37,10 @@ func (e *Error) Error() string {
 	if e.Err != nil {
 		return fmt.Sprintf("%s: %s: %v", e.Code, e.Message, e.Err)
 	}
-	return fmt.Sprintf("%s: %s", e.Code, e.Message)
+	if e.Message != "" {
+		return fmt.Sprintf("%s: %s", e.Code, e.Message)
+	}
+	return fmt.Sprintf("%s", e.Code)
 }
 
 // Unwrap returns the underlying error.
