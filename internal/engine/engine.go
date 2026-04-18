@@ -171,12 +171,11 @@ func (e *Engine) Tiers() [][]*sstable.Reader {
 
 // Put inserts or updates a key-value pair in the database.
 func (e *Engine) Put(key, value []byte) error {
-	e.mu.Lock()
-	defer e.mu.Unlock()
-
 	if err := e.wal.AppendPut(key, value); err != nil {
 		return err
 	}
+
+	e.mu.Lock()
 
 	if err := e.memtable.Put(key, value); err != nil {
 		return err
@@ -194,8 +193,12 @@ func (e *Engine) Put(key, value []byte) error {
 			walPath: sealedPath,
 		}
 		e.immutableMemtables = append(e.immutableMemtables, immutable)
-		e.memtable = memtable.NewMemtable()
 		immutableToFlush := e.immutableMemtables[len(e.immutableMemtables)-1]
+
+		e.memtable = memtable.NewMemtable()
+
+		e.mu.Unlock()
+
 		e.wg.Add(1)
 		go func() {
 			defer e.wg.Done()
@@ -203,6 +206,8 @@ func (e *Engine) Put(key, value []byte) error {
 				log.Printf("flushMemtable error: %v", err)
 			}
 		}()
+	} else {
+		e.mu.Unlock()
 	}
 
 	return nil
