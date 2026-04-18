@@ -4,7 +4,7 @@ package wal
 import (
 	"bufio"
 	"errors"
-	"fmt"
+	gerrors "github.com/MikhailWahib/graveldb/internal/errors"
 	"io"
 	"os"
 	"path/filepath"
@@ -59,9 +59,9 @@ func (w *WAL) writeEntry(e storage.Entry) error {
 		err := w.err
 		w.mu.Unlock()
 		if err != nil {
-			return fmt.Errorf("WAL is closed: %w", err)
+			return gerrors.Closed("WAL is closed", err)
 		}
-		return fmt.Errorf("WAL is closed")
+		return gerrors.Closed("WAL is closed", nil)
 	}
 
 	data := storage.SerializeEntry(e)
@@ -144,9 +144,9 @@ func (w *WAL) Seal(archivePath string) (string, error) {
 
 	if w.closed {
 		if w.err != nil {
-			return "", fmt.Errorf("WAL is closed: %w", w.err)
+			return "", gerrors.Closed("WAL is closed", w.err)
 		}
-		return "", fmt.Errorf("WAL is closed")
+		return "", gerrors.Closed("WAL is closed", nil)
 	}
 
 	if err := w.flushBuffer(); err != nil {
@@ -160,10 +160,10 @@ func (w *WAL) Seal(archivePath string) (string, error) {
 	if err := os.Rename(w.path, archivePath); err != nil {
 		file, openErr := os.OpenFile(w.path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
 		if openErr != nil {
-			return "", fmt.Errorf("failed to rotate WAL: rename error: %v, reopen error: %w", err, openErr)
+			return "", gerrors.IO("failed to rotate WAL: rename failed", err)
 		}
 		w.file = file
-		return "", err
+		return "", gerrors.IO("failed to rotate WAL", err)
 	}
 
 	file, err := os.OpenFile(w.path, os.O_CREATE|os.O_WRONLY|os.O_TRUNC|os.O_APPEND, 0644)

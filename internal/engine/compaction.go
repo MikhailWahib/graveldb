@@ -3,6 +3,7 @@ package engine
 
 import (
 	"fmt"
+	gerrors "github.com/MikhailWahib/graveldb/internal/errors"
 	"os"
 	"sync"
 
@@ -75,9 +76,9 @@ func (cm *CompactionManager) compact(tier int) error {
 	}
 
 	// Generate output path (counter is atomically incremented)
-	outputFile := cm.generateOutputPath(tier + 1) // e.g., T1/000123.sst
+	outputFile := cm.generateOutputPath(tier + 1)
 	if outputFile == "" {
-		return fmt.Errorf("failed to generate output path for tier %d", tier+1)
+		return gerrors.IO("failed to generate output path for compaction", nil)
 	}
 
 	cm.engine.mu.Lock()
@@ -90,41 +91,37 @@ func (cm *CompactionManager) compact(tier int) error {
 	// Add sources to merger and open them for reading
 	for _, sst := range inputs {
 		if err := merger.AddSource(sst); err != nil {
-			return fmt.Errorf("failed to add source to merger: %w", err)
+			return gerrors.Internal("failed to add source to merger", err)
 		}
 	}
 
 	output, err := sstable.NewWriter(outputFile, cm.engine.config.IndexInterval)
 	if err != nil {
-		// Clean up opened input SSTables
 		for _, sst := range inputs {
 			_ = sst.Close()
 		}
-		return fmt.Errorf("failed to open output SST for writing: %w", err)
+		return gerrors.IO("failed to open output SST for writing", err)
 	}
 
 	merger.SetOutput(output)
-	// Perform the merge
 	if err := merger.Merge(); err != nil {
-		// Clean up on error
 		_ = output.Close()
 		for _, sst := range inputs {
 			_ = sst.Close()
 		}
-		return fmt.Errorf("failed to merge SSTables: %w", err)
+		return gerrors.Internal("failed to merge SSTables", err)
 	}
 
 	if err := output.Close(); err != nil {
 		for _, sst := range inputs {
 			_ = sst.Close()
 		}
-		return fmt.Errorf("failed to close output SST: %w", err)
+		return gerrors.IO("failed to close output SST", err)
 	}
 
-	// Open the output file as a reader for the next tier
 	outputReader, err := sstable.NewReader(outputFile)
 	if err != nil {
-		return fmt.Errorf("failed to open compacted SST for reading: %w", err)
+		return gerrors.IO("failed to open compacted SST for reading", err)
 	}
 
 	// Update tiers structure

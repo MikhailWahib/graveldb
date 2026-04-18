@@ -5,7 +5,7 @@ package storage
 import (
 	"bufio"
 	"encoding/binary"
-	"fmt"
+	gerrors "github.com/MikhailWahib/graveldb/internal/errors"
 	"io"
 	"os"
 )
@@ -28,7 +28,7 @@ func WriteEntryAt(e Entry, file *os.File, offset int64) (int64, error) {
 
 	n, err := file.WriteAt(buf, offset)
 	if err != nil {
-		return 0, fmt.Errorf("failed to write entry: %w", err)
+		return 0, gerrors.IO("failed to write entry", err)
 	}
 
 	return offset + int64(n), nil

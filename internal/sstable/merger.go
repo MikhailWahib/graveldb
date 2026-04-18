@@ -3,7 +3,8 @@ package sstable
 import (
 	"bytes"
 	"container/heap"
-	"fmt"
+
+	gerrors "github.com/MikhailWahib/graveldb/internal/errors"
 )
 
 // Merger combines multiple SSTables into a single SSTable
@@ -70,7 +71,7 @@ func (h *iteratorHeap) Pop() any {
 // Merge performs the actual merge operation and writes the output SST to disk
 func (m *Merger) Merge() error {
 	if m.output == nil {
-		return fmt.Errorf("merger: output SSTable not set")
+		return gerrors.Internal("merger: output SSTable not set", nil)
 	}
 
 	ih := &iteratorHeap{}

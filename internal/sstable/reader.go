@@ -5,7 +5,7 @@ package sstable
 import (
 	"bytes"
 	"encoding/binary"
-	"fmt"
+	gerrors "github.com/MikhailWahib/graveldb/internal/errors"
 	"io"
 	"os"
 	"sort"
@@ -25,7 +25,7 @@ type Reader struct {
 func NewReader(path string) (*Reader, error) {
 	file, err := os.Open(path)
 	if err != nil {
-		return nil, fmt.Errorf("failed to open SSTable: %w", err)
+		return nil, gerrors.IO("failed to open SSTable", err)
 	}
 
 	reader := &Reader{
@@ -35,7 +35,7 @@ func NewReader(path string) (*Reader, error) {
 
 	if err := reader.loadIndex(); err != nil {
 		_ = file.Close()
-		return nil, fmt.Errorf("failed to load index: %w", err)
+		return nil, gerrors.IO("failed to load index", err)
 	}
 
 	return reader, nil
@@ -45,7 +45,7 @@ func NewReader(path string) (*Reader, error) {
 func (r *Reader) loadIndex() error {
 	stat, err := r.file.Stat()
 	if err != nil {
-		return fmt.Errorf("failed to stat SST file: %w", err)
+		return gerrors.IO("failed to stat SST file", err)
 	}
 	if stat.Size() < FooterSize {
 		return nil
@@ -55,7 +55,7 @@ func (r *Reader) loadIndex() error {
 	footerOffset := stat.Size() - FooterSize
 	footer := make([]byte, FooterSize)
 	if _, err := io.ReadFull(io.NewSectionReader(r.file, footerOffset, FooterSize), footer); err != nil {
-		return fmt.Errorf("failed to read footer: %w", err)
+		return gerrors.IO("failed to read footer", err)
 	}
 
 	indexOffset := int64(binary.BigEndian.Uint64(footer[:IndexOffsetSize]))
@@ -65,7 +65,7 @@ func (r *Reader) loadIndex() error {
 	// Read index section into memory buffer
 	indexBuf := make([]byte, indexSize)
 	if _, err := io.ReadFull(io.NewSectionReader(r.file, indexOffset, indexSize), indexBuf); err != nil {
-		return fmt.Errorf("failed to read index section: %w", err)
+		return gerrors.IO("failed to read index section", err)
 	}
 
 	// Parse index from buffer
@@ -74,11 +74,11 @@ func (r *Reader) loadIndex() error {
 	for offset < indexSize {
 		entry, bytesRead, err := storage.DecodeEntry(indexBuf[offset:])
 		if err != nil {
-			return fmt.Errorf("failed to decode index entry: %w", err)
+			return gerrors.Corruption("failed to decode index entry", err)
 		}
 
 		if offset+int64(bytesRead)+8 > indexSize {
-			return fmt.Errorf("corrupt index: missing data offset")
+			return gerrors.Corruption("corrupt index: missing data offset", nil)
 		}
 
 		// Decode data offset
@@ -101,7 +101,7 @@ func (r *Reader) Get(key []byte) (storage.Entry, error) {
 	}) - 1
 
 	if pos < 0 {
-		return storage.Entry{}, fmt.Errorf("key not found: %s", key)
+		return storage.Entry{}, gerrors.NotFound("key not found in index", nil)
 	}
 
 	// Calculate the block boundary
@@ -116,7 +116,7 @@ func (r *Reader) Get(key []byte) (storage.Entry, error) {
 	indexBlockBuf := make([]byte, blockSize)
 	_, err := r.file.ReadAt(indexBlockBuf, offset)
 	if err != nil {
-		return storage.Entry{}, fmt.Errorf("Error reading key: %s, %s", key, err)
+		return storage.Entry{}, gerrors.IO("failed to read block for key", err)
 	}
 
 	// resets index to read from the beginning of the in-mem block
@@ -127,16 +127,15 @@ func (r *Reader) Get(key []byte) (storage.Entry, error) {
 			if err == io.EOF {
 				break
 			}
-			return storage.Entry{}, fmt.Errorf("failed to read entry: %w", err)
+			return storage.Entry{}, gerrors.IO("failed to read entry", err)
 		}
 
 		cmp := bytes.Compare(entry.Key, key)
 		if cmp == 0 {
 			if storage.EntryType(entry.Type) == storage.DeleteEntry {
-				return storage.Entry{}, fmt.Errorf("key not found: %s", key)
-			} else {
-				return storage.Entry{Type: storage.PutEntry, Key: key, Value: entry.Value}, nil
+				return storage.Entry{}, gerrors.NotFound("key marked as deleted", nil)
 			}
+			return storage.Entry{Type: storage.PutEntry, Key: key, Value: entry.Value}, nil
 		}
 
 		if cmp > 0 {
@@ -146,7 +145,7 @@ func (r *Reader) Get(key []byte) (storage.Entry, error) {
 		offset += int64(n)
 	}
 
-	return storage.Entry{}, fmt.Errorf("key not found: %s", key)
+	return storage.Entry{}, gerrors.NotFound("key not found in block", nil)
 }
 
 // NewIterator creates a new iterator
