@@ -110,13 +110,19 @@ func (r *Reader) Get(key []byte) (storage.Entry, error) {
 		blockEnd = r.index[pos+1].Offset
 	}
 
-	// Linear scan within the block boundaries
+	// load block to memory
 	offset := r.index[pos].Offset
-	var lastValue storage.Entry
-	var foundDeleted bool
+	blockSize := blockEnd - offset
+	indexBlockBuf := make([]byte, blockSize)
+	_, err := r.file.ReadAt(indexBlockBuf, offset)
+	if err != nil {
+		return storage.Entry{}, fmt.Errorf("Error reading key: %s, %s", key, err)
+	}
 
-	for offset < blockEnd {
-		entry, newOffset, err := storage.ReadEntryAt(r.file, offset)
+	// resets index to read from the beginning of the in-mem block
+	offset = 0
+	for offset < blockSize {
+		entry, n, err := storage.DecodeEntry(indexBlockBuf[offset:])
 		if err != nil {
 			if err == io.EOF {
 				break
@@ -127,11 +133,9 @@ func (r *Reader) Get(key []byte) (storage.Entry, error) {
 		cmp := bytes.Compare(entry.Key, key)
 		if cmp == 0 {
 			if storage.EntryType(entry.Type) == storage.DeleteEntry {
-				foundDeleted = true
-				lastValue = storage.Entry{}
+				return storage.Entry{}, fmt.Errorf("key not found: %s", key)
 			} else {
-				lastValue = entry
-				foundDeleted = false
+				return storage.Entry{Type: storage.PutEntry, Key: key, Value: entry.Value}, nil
 			}
 		}
 
@@ -139,13 +143,10 @@ func (r *Reader) Get(key []byte) (storage.Entry, error) {
 			break
 		}
 
-		offset = newOffset
+		offset += int64(n)
 	}
 
-	if foundDeleted || lastValue.Value == nil {
-		return storage.Entry{}, fmt.Errorf("key not found: %s", key)
-	}
-	return lastValue, nil
+	return storage.Entry{}, fmt.Errorf("key not found: %s", key)
 }
 
 // NewIterator creates a new iterator
