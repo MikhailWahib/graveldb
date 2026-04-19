@@ -167,8 +167,9 @@ func (r *Reader) NewIterator() *Iterator {
 	}
 }
 
-// Close closes the underlying file
+// Close closes the underlying file and clears block cache
 func (r *Reader) Close() error {
+	r.blockCache = sync.Map{}
 	return r.file.Close()
 }
 
