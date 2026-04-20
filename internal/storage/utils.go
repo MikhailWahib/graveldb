@@ -5,10 +5,9 @@ package storage
 import (
 	"bufio"
 	"encoding/binary"
+	gerrors "github.com/MikhailWahib/graveldb/internal/errors"
 	"io"
 	"os"
-
-	gerrors "github.com/MikhailWahib/graveldb/internal/errors"
 )
 
 // WriteEntryAt writes an entry to the given file at the specified offset using a length-prefixed format.
